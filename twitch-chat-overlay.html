@@ -246,6 +246,21 @@
     border:1px solid var(--border); border-radius:4px;
     padding:6px 8px; font-size:13px; font-family:inherit;
   }
+  #chatModeSelect{
+    background:#12100c; color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:6px 8px; font-size:12px; font-family:inherit;
+  }
+  .modchat-row{
+    background: rgba(120,60,220,0.22);
+    border-left:3px solid #8a4dff;
+    border-radius:5px;
+    padding:4px 8px;
+    margin-bottom:4px;
+    font-size:14px;
+  }
+  .modchat-row .mc-tag{ color:#c9a8ff; font-weight:700; margin-right:6px; }
+  .modchat-row .mc-text{ color:var(--parchment); }
   #chatInputBar button{
     background: var(--gold); color:#1a0f00; font-weight:700;
     border:none; border-radius:4px;
@@ -338,6 +353,10 @@
   </div>
 
   <div id="chatInputBar">
+    <select id="chatModeSelect" style="display:none">
+      <option value="twitch">Twitch Chat</option>
+      <option value="mod">🔒 Mod-Chat (nur intern)</option>
+    </select>
     <input id="chatMessageInput" type="text" placeholder="Nachricht in den Chat schreiben..." maxlength="500">
     <button id="sendChatBtn">Senden</button>
   </div>
@@ -423,7 +442,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v39 · 11.09.2026';
+  const OVERLAY_VERSION = 'v41 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -454,6 +473,7 @@
     timeoutStatus: document.getElementById('timeoutStatus'),
     chatInputBar: document.getElementById('chatInputBar'),
     chatMessageInput: document.getElementById('chatMessageInput'),
+    chatModeSelect: document.getElementById('chatModeSelect'),
     sendChatBtn: document.getElementById('sendChatBtn'),
     streamViewBtn: document.getElementById('streamViewBtn'),
     streamContainer: document.getElementById('streamContainer'),
@@ -534,6 +554,7 @@
   let syncWs = null;
   function connectSyncServer(){
     try{ syncWs = new WebSocket(SYNC_SERVER_URL); }catch(e){ return; }
+    syncWs.onopen = ()=>{ announceModStatus(); };
     syncWs.onmessage = (evt)=>{
       let msg;
       try{ msg = JSON.parse(evt.data); }catch(e){ return; }
@@ -572,6 +593,8 @@
         renderAutomodHold(msg.id, msg.userName, msg.text);
       } else if(msg.type === 'automodResolved'){
         removeAutomodHold(msg.id);
+      } else if(msg.type === 'modChatMessage'){
+        renderModChatMessage(msg.from, msg.text);
       }
     };
     syncWs.onclose = ()=>{ setTimeout(connectSyncServer, 4000); };
@@ -579,6 +602,9 @@
   }
   function syncSend(obj){
     if(syncWs && syncWs.readyState === 1) syncWs.send(JSON.stringify(obj));
+  }
+  function announceModStatus(){
+    syncSend({ type: 'identify', isMod: isMod });
   }
   connectSyncServer();
 
@@ -855,6 +881,8 @@
       subscriptionsAvailable = isMod; // an dieser Stelle heißt isMod noch "ist Broadcaster" (USERSTATE korrigiert Mods gleich nach)
       els.modViewBtn.style.display = isMod ? '' : 'none';
       els.resetAllBtn.style.display = isMod ? '' : 'none';
+      els.chatModeSelect.style.display = isMod ? '' : 'none';
+      announceModStatus();
       updateChatInputVisibility();
 
       // Automatischer Session-Reset: einmal pro Kalendertag, nur wenn DER STREAMER SELBST sich einloggt
@@ -888,7 +916,18 @@
 
   function sendChatMessage(){
     const text = els.chatMessageInput.value.trim();
-    if(!text || !ws || ws.readyState !== 1 || !accessToken || !ownLogin) return;
+    if(!text || !accessToken || !ownLogin) return;
+
+    if(els.chatModeSelect.style.display !== 'none' && els.chatModeSelect.value === 'mod'){
+      // Mod-Chat: geht NICHT an Twitch, nur an alle anderen offenen Tool-Fenster über den Sync-Server
+      const from = ownDisplayName || ownLogin;
+      syncSend({ type: 'modChat', from: from, text: text });
+      renderModChatMessage(from, text);
+      els.chatMessageInput.value = '';
+      return;
+    }
+
+    if(!ws || ws.readyState !== 1) return;
     const channel = els.channel.value.trim().toLowerCase();
     ws.send('PRIVMSG #' + channel + ' :' + text);
     // Twitch schickt eigene Nachrichten nicht automatisch zurück -> selbst anzeigen
@@ -902,6 +941,24 @@
   els.chatMessageInput.addEventListener('keydown', (e)=>{
     if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
   });
+
+  function renderModChatMessage(from, text){
+    const row = document.createElement('div');
+    row.className = 'modchat-row';
+    const tag = document.createElement('span');
+    tag.className = 'mc-tag';
+    tag.textContent = '🔒 ' + from + ':';
+    row.appendChild(tag);
+    const textEl = document.createElement('span');
+    textEl.className = 'mc-text';
+    textEl.textContent = text;
+    row.appendChild(textEl);
+
+    const wasNearBottom = isNearBottom();
+    els.chat.appendChild(row);
+    if(wasNearBottom) els.chat.scrollTop = els.chat.scrollHeight;
+    trimOldMessages();
+  }
 
   // ---------- Stream-Vorschau (einblendbar, per Ziehen an der Unterkante skalierbar) ----------
   function loadStreamIframe(){
@@ -1163,6 +1220,8 @@
       isMod = nowMod;
       els.modViewBtn.style.display = isMod ? '' : 'none';
       els.resetAllBtn.style.display = isMod ? '' : 'none';
+      els.chatModeSelect.style.display = isMod ? '' : 'none';
+      announceModStatus();
     }
   }
 
