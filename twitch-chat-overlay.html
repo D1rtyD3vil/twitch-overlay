@@ -406,7 +406,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v31 · 10.09.2026';
+  const OVERLAY_VERSION = 'v32 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -512,6 +512,56 @@
   function persistGreeted(){
     localStorage.setItem('ligaChatOverlayGreeted', JSON.stringify(Array.from(greetedUsers)));
   }
+
+  // ---------- Sync-Server (teilt Begrüßungs-Liste & Sub-Tiers live mit allen offenen Tool-Fenstern) ----------
+  const SYNC_SERVER_URL = 'wss://d1rtyoverlay.duckdns.org:8443';
+  let syncWs = null;
+  function connectSyncServer(){
+    try{ syncWs = new WebSocket(SYNC_SERVER_URL); }catch(e){ return; }
+    syncWs.onmessage = (evt)=>{
+      let msg;
+      try{ msg = JSON.parse(evt.data); }catch(e){ return; }
+      if(msg.type === 'state'){
+        (msg.greeted || []).forEach(id => greetedUsers.add(id));
+        persistGreeted();
+        document.querySelectorAll('.chat-row[data-user-id]').forEach(row=>{
+          if(greetedUsers.has(row.dataset.userId)){
+            const icon = row.querySelector('.status-icon');
+            if(icon){ icon.className = 'status-icon ok'; icon.innerHTML = CHECK_SVG; }
+          }
+        });
+        Object.keys(msg.tiers || {}).forEach(id=>{
+          if(msg.tiers[id] && (tierCache.get(id) === undefined || tierCache.get(id) === null)){
+            tierCache.set(id, msg.tiers[id]);
+            updateRenderedTiers([id]);
+          }
+        });
+      } else if(msg.type === 'greetUpdate'){
+        if(msg.greeted) greetedUsers.add(msg.userId); else greetedUsers.delete(msg.userId);
+        persistGreeted();
+        document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(msg.userId) + '"] .status-icon').forEach(el=>{
+          el.className = 'status-icon ' + (msg.greeted ? 'ok' : 'no');
+          el.innerHTML = msg.greeted ? CHECK_SVG : CROSS_SVG;
+        });
+      } else if(msg.type === 'resetGreetings'){
+        greetedUsers = new Set();
+        persistGreeted();
+        document.querySelectorAll('.status-icon').forEach(el=>{
+          el.className = 'status-icon no'; el.innerHTML = CROSS_SVG;
+        });
+      } else if(msg.type === 'tierUpdate'){
+        tierCache.set(msg.userId, msg.tier);
+        updateRenderedTiers([msg.userId]);
+      }
+    };
+    syncWs.onclose = ()=>{ setTimeout(connectSyncServer, 4000); };
+    syncWs.onerror = ()=>{ try{ syncWs.close(); }catch(e){} };
+  }
+  function syncSend(obj){
+    if(syncWs && syncWs.readyState === 1) syncWs.send(JSON.stringify(obj));
+  }
+  connectSyncServer();
+
   function getGreetingKeywords(){
     return els.greetings.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
   }
@@ -546,12 +596,14 @@
   function resetGreetings(){
     greetedUsers = new Set();
     persistGreeted();
+    syncSend({ type: 'resetGreetings' });
   }
   function toggleGreetedManually(userId){
     if(greetedUsers.has(userId)) greetedUsers.delete(userId);
     else greetedUsers.add(userId);
     persistGreeted();
     const greetedNow = greetedUsers.has(userId);
+    syncSend({ type: greetedNow ? 'greet' : 'ungreet', userId: userId });
     document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(userId) + '"] .status-icon').forEach(el=>{
       el.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
       el.innerHTML = greetedNow ? CHECK_SVG : CROSS_SVG;
@@ -835,6 +887,7 @@
         const found = new Set();
         (data.data || []).forEach(sub=>{
           tierCache.set(sub.user_id, sub.tier);
+          syncSend({ type: 'setTier', userId: sub.user_id, tier: sub.tier });
           found.add(sub.user_id);
         });
         ids.forEach(id => { if(!found.has(id)) tierCache.set(id, null); });
@@ -941,6 +994,7 @@
     const tier = tags['msg-param-sub-plan'];
     if(targetUserId && (tier === '1000' || tier === '2000' || tier === '3000')){
       tierCache.set(targetUserId, tier);
+      syncSend({ type: 'setTier', userId: targetUserId, tier: tier });
       updateRenderedTiers([targetUserId]);
     }
 
@@ -1119,6 +1173,7 @@
     const existing = tierCache.get(userId);
     if(existing === undefined || existing === null){
       tierCache.set(userId, tier);
+      syncSend({ type: 'setTier', userId: userId, tier: tier });
       updateRenderedTiers([userId]);
     }
   }
@@ -1211,6 +1266,7 @@
     if(greeting && !alreadyGreeted){
       greetedUsers.add(userId);
       persistGreeted();
+      syncSend({ type: 'greet', userId: userId });
       firstGreeting = true;
     }
     const greetedNow = greetedUsers.has(userId);
