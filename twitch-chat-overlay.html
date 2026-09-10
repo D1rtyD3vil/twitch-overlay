@@ -128,11 +128,12 @@
   }
   .chat-row.first-greeting{
     border-left-color: var(--gold);
-    animation: glow-pulse 3.4s ease-out 1;
+    animation: glow-pulse 60s ease-out 1;
   }
   @keyframes glow-pulse{
-    0%   { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0);   background-color: rgba(var(--gold-rgb),0.40); }
-    45%  { box-shadow: 0 0 16px 3px rgba(var(--gold-rgb),0.55); background-color: rgba(var(--gold-rgb),0.24); }
+    0%   { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0);   background-color: rgba(var(--gold-rgb),0.45); }
+    8%   { box-shadow: 0 0 14px 3px rgba(var(--gold-rgb),0.5); background-color: rgba(var(--gold-rgb),0.28); }
+    92%  { box-shadow: 0 0 6px 1px rgba(var(--gold-rgb),0.32); background-color: rgba(var(--gold-rgb),0.18); }
     100% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0);   background-color: var(--panel); }
   }
 
@@ -218,7 +219,8 @@
     <span style="opacity:0.4">|</span>
     <span id="tierStatus">Sub-Tier: aus</span>
     <button id="toggleSettings">⚙ Einstellungen</button>
-    <button id="resetSessionBtn" title="Setzt die Liste der bereits Begrüßten zurück (z.B. zu Sende-Beginn)">Neue Session</button>
+    <button id="resetSessionBtn" title="Setzt die Liste der bereits Begrüßten nur bei DIR zurück">Neue Session (nur ich)</button>
+    <button id="resetAllSessionBtn" style="display:none" title="Setzt die Begrüßungs-Session bei DIR UND allen anderen mit offenem Tool zurück">Neue Session (ALLE)</button>
     <button id="modViewBtn" style="display:none">🛡 Mod-Ansicht</button>
     <button id="streamViewBtn">📺 Stream</button>
   </div>
@@ -337,13 +339,31 @@
   };
 
   const DEFAULT_GREETINGS = [
-    'moin','moinsen','moinmoin','moinsn','hi','hii','hiho','hey','heyho','heyhey',
-    'hallo','hallöchen','hallochen','servus','sers','seas','servas',
-    'yo','yoyo','sup','wusup','tach','tachchen','tachtach',
+    // Moin-Familie
+    'moin','moinsen','moinmoin','moinsn','moinz','moinihr','moini',
+    // Hallo/Hi-Familie
+    'hi','hii','hiii','hiho','hey','heyy','heyho','heyhey','heyo','hallo','hallöchen','hallochen',
+    'hallihallo','hallihallöchen','servus','sers','seas','servas','seawas',
+    // Tach/Tag
+    'tach','tachchen','tachtach','tagchen','tag',
+    // Yo/Sup
+    'yo','yoyo','jo','joa','sup','wusup','wassup','whatsup','ayy','aye',
+    // Huhu/Hoi/Ahoi
     'huhu','hoi','ahoi','ahoy','n7','o7',
-    'abend','nabend','gutenabend','morgen','gutenmorgen','tag','gutentag',
-    'grüezi','gruezi','grüßgott','gruessgott','salve','ola','hola',
-    'jo','joa','wb','welcomeback'
+    // Tageszeit-Grüße
+    'abend','nabend','gutenabend','morgen','gutenmorgen','mornin','morning','evening','evenin','gn8',
+    // Regional DACH
+    'grüezi','gruezi','grüßgott','gruessgott','grias','pfiati',
+    // Englisch
+    'hello','hellooo','howdy','greetings','welcome','gm',
+    // Internationale Grüße
+    'salve','ola','hola','salut','bonjour','ciao','chao','konnichiwa','ohayo','annyeong',
+    'merhaba','selam','salaam','namaste','privet','cześć','czesc','hej','hejsan',
+    'goedemorgen','shalom',
+    // Sonstiges
+    'wb','welcomeback',
+    // Community-eigene Begriffe (Liga der Heftigkeiten)
+    'd1rtyola','d1rtymoin','d1rtyhallo'
   ];
 
   const DEFAULT_BLOCKED_BOTS = [
@@ -351,6 +371,8 @@
     'phantombot','soundalerts','commanderroot','sery_bot','own3d','pretzelrocks',
     'deepbot','ankhbot','vivbot','coebot','botisimo','streamlootsbot','kofistreambot'
   ];
+
+  const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -364,6 +386,7 @@
     transparentBtn: document.getElementById('transparentBtn'),
     toggleSettings: document.getElementById('toggleSettings'),
     resetBtn: document.getElementById('resetSessionBtn'),
+    resetAllBtn: document.getElementById('resetAllSessionBtn'),
     panel: document.getElementById('settingsPanel'),
     topbar: document.getElementById('topbar'),
     statusDot: document.getElementById('statusDot'),
@@ -470,11 +493,22 @@
     localStorage.setItem('ligaChatOverlayTransparent', on ? '1' : '0');
   };
   els.resetBtn.onclick = ()=>{
-    if(confirm('Liste der bereits begrüßten Zuschauer für eine neue Session löschen?')){
-      greetedUsers = new Set();
-      persistGreeted();
+    if(confirm('Liste der bereits begrüßten Zuschauer NUR BEI DIR für eine neue Session löschen?')){
+      resetGreetings();
     }
   };
+  els.resetAllBtn.onclick = ()=>{
+    if(confirm('Begrüßungs-Session bei DIR UND allen anderen mit offenem Tool (z.B. Mods) zurücksetzen?')){
+      resetGreetings();
+      if(ws && ws.readyState === 1 && els.channel.value.trim()){
+        ws.send('PRIVMSG #' + els.channel.value.trim().toLowerCase() + ' :' + GREETING_RESET_COMMAND);
+      }
+    }
+  };
+  function resetGreetings(){
+    greetedUsers = new Set();
+    persistGreeted();
+  }
 
   // ---------- Mod-Ansicht / Timeout-Tool ----------
   els.modViewBtn.onclick = ()=>{ els.modToolbar.classList.toggle('open'); };
@@ -587,6 +621,7 @@
       isMod = (ownUserId === broadcasterId);
       subscriptionsAvailable = isMod; // an dieser Stelle heißt isMod noch "ist Broadcaster" (USERSTATE korrigiert Mods gleich nach)
       els.modViewBtn.style.display = isMod ? '' : 'none';
+      els.resetAllBtn.style.display = isMod ? '' : 'none';
       updateChatInputVisibility();
       await fetchChannelBadges();
       if(subscriberBadgeTierMap.size > 0) setTierStatus('aktiv ✓');
@@ -790,6 +825,7 @@
     if(nowMod !== isMod){
       isMod = nowMod;
       els.modViewBtn.style.display = isMod ? '' : 'none';
+      els.resetAllBtn.style.display = isMod ? '' : 'none';
     }
   }
 
@@ -818,6 +854,13 @@
       const parts = b.split('/');
       if(parts[0]) badges[parts[0]] = parts[1];
     });
+
+    if(message.trim() === GREETING_RESET_COMMAND){
+      // unsichtbarer Reset-Befehl -> nur ausführen wenn von Streamer/Mod, nie anzeigen
+      if(badges.broadcaster || badges.moderator) resetGreetings();
+      return;
+    }
+
     const emotes = parseEmoteTag(tags['emotes'] || '');
     applyBadgeTier(userId, badges);
     const cleaned = stripActionWrapper(message, emotes);
