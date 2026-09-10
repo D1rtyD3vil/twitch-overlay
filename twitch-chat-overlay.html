@@ -110,7 +110,7 @@
   /* ---------- Chat ---------- */
   #chat{
     flex:1;
-    overflow-y:hidden;
+    overflow-y:auto;
     display:flex; flex-direction:column;
     justify-content:flex-end;
     padding:8px 10px;
@@ -128,13 +128,7 @@
   }
   .chat-row.first-greeting{
     border-left-color: var(--gold);
-    animation: glow-pulse 60s ease-out 1;
-  }
-  @keyframes glow-pulse{
-    0%   { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0);   background-color: rgba(var(--gold-rgb),0.45); }
-    8%   { box-shadow: 0 0 14px 3px rgba(var(--gold-rgb),0.5); background-color: rgba(var(--gold-rgb),0.28); }
-    92%  { box-shadow: 0 0 6px 1px rgba(var(--gold-rgb),0.32); background-color: rgba(var(--gold-rgb),0.18); }
-    100% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0);   background-color: var(--panel); }
+    background-color: rgba(var(--gold-rgb), 0.22);
   }
 
   .chat-row.timeout-armed{ cursor:pointer; }
@@ -166,7 +160,7 @@
   .tier-sub{ background: var(--parchment-dim); }
 
   .display-name{ font-weight:700; flex:0 0 auto; }
-  .message-text{ color: var(--parchment); }
+  .message-text{ color: var(--parchment); flex:1 1 0%; min-width:0; overflow-wrap:break-word; word-break:break-word; }
   .chat-emote{ height:1.5em; width:auto; vertical-align:middle; margin:0 1px; display:inline-block; }
 
   #streamContainer{
@@ -1031,8 +1025,9 @@
     msgSpan.innerHTML = ' ' + buildMessageHtml(message, emotes);
     row.appendChild(msgSpan);
 
+    const wasNearBottom = isNearBottom();
     els.chat.appendChild(row);
-    els.chat.scrollTop = els.chat.scrollHeight;
+    if(wasNearBottom) els.chat.scrollTop = els.chat.scrollHeight;
     trimOldMessages();
 
     messageHistory.push(row.outerHTML);
@@ -1053,7 +1048,6 @@
       wrapper.innerHTML = html;
       const el = wrapper.firstElementChild;
       if(!el) return;
-      el.classList.remove('first-greeting'); // kein erneutes Aufleuchten beim Wiederherstellen
       el.classList.toggle('timeout-armed', timeoutModeActive);
       el.onclick = ()=>{ if(timeoutModeActive) executeTimeout(el.dataset.userId, el.dataset.displayName || '', el); };
       els.chat.appendChild(el);
@@ -1061,6 +1055,10 @@
     });
     els.emptyHint.style.display = 'none';
     els.chat.scrollTop = els.chat.scrollHeight;
+  }
+
+  function isNearBottom(){
+    return els.chat.scrollHeight - els.chat.scrollTop - els.chat.clientHeight < 60;
   }
 
   function trimOldMessages(){
