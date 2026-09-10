@@ -146,6 +146,27 @@
   .alert-icon{ flex:0 0 auto; color: var(--gold); }
   .alert-text{ color: var(--parchment); font-weight:600; }
 
+  #automodQueue{
+    display:flex; flex-direction:column; gap:6px;
+    padding:8px 10px 0 10px;
+  }
+  .automod-card{
+    background: var(--panel-solid);
+    border:1px solid var(--gold);
+    border-radius:6px;
+    padding:8px 10px;
+    font-size:13px;
+  }
+  .automod-card .am-header{ font-weight:700; color:var(--gold); margin-bottom:4px; }
+  .automod-card .am-text{ color:var(--parchment); margin-bottom:8px; word-break:break-word; }
+  .automod-card .am-buttons{ display:flex; gap:8px; }
+  .automod-card button{
+    flex:1; padding:5px 8px; border-radius:4px; border:none; cursor:pointer;
+    font-weight:700; font-size:12px;
+  }
+  .am-allow{ background:var(--green); color:#0a1a0a; }
+  .am-deny{ background:var(--red); color:#1a0a0a; }
+
   #userCardBackdrop{
     display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:50;
     align-items:center; justify-content:center;
@@ -315,6 +336,8 @@
     </div>
   </div>
 
+  <div id="automodQueue"></div>
+
   <div id="chat">
     <div id="emptyHint">Noch keine Nachrichten. Channel eintragen und „Chat verbinden" klicken.</div>
   </div>
@@ -405,7 +428,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v37 · 11.09.2026';
+  const OVERLAY_VERSION = 'v38 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -441,6 +464,7 @@
     streamContainer: document.getElementById('streamContainer'),
     streamFrame: document.getElementById('streamFrame'),
     userCardBackdrop: document.getElementById('userCardBackdrop'),
+    automodQueue: document.getElementById('automodQueue'),
     userCard: document.getElementById('userCard'),
   };
 
@@ -550,6 +574,10 @@
       } else if(msg.type === 'tierUpdate'){
         tierCache.set(msg.userId, msg.tier);
         updateRenderedTiers([msg.userId]);
+      } else if(msg.type === 'automodHold'){
+        renderAutomodHold(msg.id, msg.userName, msg.text);
+      } else if(msg.type === 'automodResolved'){
+        removeAutomodHold(msg.id);
       }
     };
     syncWs.onclose = ()=>{ setTimeout(connectSyncServer, 4000); };
@@ -559,6 +587,40 @@
     if(syncWs && syncWs.readyState === 1) syncWs.send(JSON.stringify(obj));
   }
   connectSyncServer();
+
+  // ---------- AutoMod-Warteschlange ----------
+  function renderAutomodHold(id, userName, text){
+    if(document.getElementById('am-' + id)) return; // schon angezeigt
+    const card = document.createElement('div');
+    card.className = 'automod-card';
+    card.id = 'am-' + id;
+    const header = document.createElement('div');
+    header.className = 'am-header';
+    header.textContent = '🛡 AutoMod hält zurück — ' + userName;
+    card.appendChild(header);
+    const textEl = document.createElement('div');
+    textEl.className = 'am-text';
+    textEl.textContent = text;
+    card.appendChild(textEl);
+    const buttons = document.createElement('div');
+    buttons.className = 'am-buttons';
+    const allowBtn = document.createElement('button');
+    allowBtn.className = 'am-allow';
+    allowBtn.textContent = 'Erlauben';
+    allowBtn.onclick = ()=> syncSend({ type: 'automodResolve', id: id, action: 'ALLOW' });
+    const denyBtn = document.createElement('button');
+    denyBtn.className = 'am-deny';
+    denyBtn.textContent = 'Ablehnen';
+    denyBtn.onclick = ()=> syncSend({ type: 'automodResolve', id: id, action: 'DENY' });
+    buttons.appendChild(allowBtn);
+    buttons.appendChild(denyBtn);
+    card.appendChild(buttons);
+    els.automodQueue.appendChild(card);
+  }
+  function removeAutomodHold(id){
+    const card = document.getElementById('am-' + id);
+    if(card) card.remove();
+  }
 
   function getGreetingKeywords(){
     return els.greetings.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
