@@ -405,7 +405,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v28 · 10.09.2026';
+  const OVERLAY_VERSION = 'v29 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -946,8 +946,14 @@
     // Twitch liefert für Sub/Resub/Gift/Raid & Co. schon einen fertig formulierten Text mit — als Alert-Zeile anzeigen
     const systemMsg = unescapeIrcTagValue(tags['system-msg']);
     if(systemMsg){
-      const msgIdx = line.indexOf(' :');
-      const extraMsg = msgIdx !== -1 ? line.substring(msgIdx + 2) : '';
+      const rest = line.substring(spaceIdx + 1);
+      const noticeIdx = rest.indexOf('USERNOTICE');
+      let extraMsg = '';
+      if(noticeIdx !== -1){
+        const afterNotice = rest.substring(noticeIdx);
+        const msgIdx = afterNotice.indexOf(' :');
+        if(msgIdx !== -1) extraMsg = afterNotice.substring(msgIdx + 2);
+      }
       renderAlert(systemMsg, extraMsg);
     }
   }
