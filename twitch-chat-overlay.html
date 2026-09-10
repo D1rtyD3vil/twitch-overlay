@@ -392,6 +392,7 @@
   let ownLogin = null;
   let ownDisplayName = null;
   let isMod = false;
+  let subscriptionsAvailable = false; // T1/T2/T3-Daten gibt Twitch nur dem Streamer selbst frei, nicht mal Mods
   let timeoutModeActive = false;
   let clientId = '';
   const tierCache = new Map();      // userId -> '1000' | '2000' | '3000' | null
@@ -582,13 +583,12 @@
         }
       }
       broadcasterId = channelId;
-      setTierStatus('aktiv ✓');
-
-      // Mod-/Streamer-Check: die zuverlässige Bestätigung kommt gleich per IRC (USERSTATE),
-      // hier schon mal die einfache Sofort-Erkennung für den Streamer selbst
       isMod = (ownUserId === broadcasterId);
+      subscriptionsAvailable = isMod; // an dieser Stelle heißt isMod noch "ist Broadcaster" (USERSTATE korrigiert Mods gleich nach)
+      setTierStatus(subscriptionsAvailable ? 'aktiv ✓' : 'aktiv (T1-3 nur für den Streamer sichtbar)');
       els.modViewBtn.style.display = isMod ? '' : 'none';
       updateChatInputVisibility();
+      fetchChannelBadges();
       if(els.channel.value.trim()) connectIRC(); // Verbindung neu aufbauen, jetzt authentifiziert (zum Schreiben nötig)
     }catch(e){ setTierStatus('Fehler'); }
   }
@@ -728,6 +728,7 @@
         if(line.startsWith('PING')){ ws.send('PONG :tmi.twitch.tv'); return; }
         if(line.indexOf('PRIVMSG') !== -1){ handlePrivmsg(line); return; }
         if(line.indexOf('USERSTATE') !== -1){ handleUserState(line); return; }
+        if(line.indexOf('USERNOTICE') !== -1){ handleUserNotice(line); return; }
         if(line.indexOf('NOTICE') !== -1){ handleNotice(line); return; }
       });
     };
@@ -753,6 +754,26 @@
       els.connLabel.textContent = 'Login-Fehler: ' + text;
       handleAuthError();
       if(ws){ try{ ws.close(); }catch(e){} }
+    }
+  }
+
+  function handleUserNotice(line){
+    // Sub/Resub/Gift-Sub-Events verraten die Tier-Stufe öffentlich für jeden im Chat —
+    // dadurch bekommen auch Mods (ohne eigenes Streamer-Login) echte T1/T2/T3-Daten für frisch (ge)abonnierte Leute
+    if(!line.startsWith('@')) return;
+    const spaceIdx = line.indexOf(' ');
+    const tags = parseTags(line.substring(1, spaceIdx));
+    const msgId = tags['msg-id'];
+    let targetUserId = null;
+    if(msgId === 'sub' || msgId === 'resub'){
+      targetUserId = tags['user-id'];
+    } else if(msgId === 'subgift' || msgId === 'anonsubgift'){
+      targetUserId = tags['msg-param-recipient-id'];
+    }
+    const tier = tags['msg-param-sub-plan'];
+    if(targetUserId && (tier === '1000' || tier === '2000' || tier === '3000')){
+      tierCache.set(targetUserId, tier);
+      updateRenderedTiers([targetUserId]);
     }
   }
 
@@ -795,8 +816,45 @@
       if(parts[0]) badges[parts[0]] = parts[1];
     });
     const emotes = parseEmoteTag(tags['emotes'] || '');
+    applyBadgeTier(userId, badges);
     const cleaned = stripActionWrapper(message, emotes);
     renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes });
+  }
+
+  const subscriberBadgeTierMap = new Map(); // Badge-Versions-ID (aus dem "badges"-Tag) -> '1000'|'2000'|'3000'
+
+  async function fetchChannelBadges(){
+    // Öffentliche Twitch-Schnittstelle, NICHT auf den Streamer beschränkt — funktioniert auch für Mods.
+    // Liefert u.a. den echten Titel jeder Sub-Badge-Version (z.B. "Tier 3 Subscriber"), daraus lesen wir die Stufe.
+    if(!accessToken || !clientId || !broadcasterId) return;
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/chat/badges?broadcaster_id=' + broadcasterId, {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(!res.ok) return;
+      const data = await res.json();
+      const subSet = (data.data || []).find(s => s.set_id === 'subscriber');
+      if(!subSet) return;
+      subscriberBadgeTierMap.clear();
+      subSet.versions.forEach(v=>{
+        const title = (v.title || '').toLowerCase();
+        let tier = '1000';
+        if(title.indexOf('tier 3') !== -1) tier = '3000';
+        else if(title.indexOf('tier 2') !== -1) tier = '2000';
+        subscriberBadgeTierMap.set(v.id, tier);
+      });
+    }catch(e){ /* egal, dann bleibt's beim generischen "Sub"-Badge */ }
+  }
+
+  function applyBadgeTier(userId, badges){
+    if(!badges.subscriber) return;
+    const tier = subscriberBadgeTierMap.get(badges.subscriber);
+    if(!tier) return;
+    const existing = tierCache.get(userId);
+    if(existing === undefined || existing === null){
+      tierCache.set(userId, tier);
+      updateRenderedTiers([userId]);
+    }
   }
 
   function stripActionWrapper(message, emotes){
@@ -901,12 +959,14 @@
     if(isSub){
       const tierBadge = document.createElement('span');
       tierBadge.className = 'tier-badge';
-      const tier = tierCache.get(userId);
-      if(tier === undefined){
+      const cachedTier = tierCache.get(userId);
+      if(cachedTier !== undefined){
+        applyTierBadge(tierBadge, cachedTier);
+      } else if(subscriptionsAvailable){
         tierBadge.textContent = '…';
         queueTierLookup(userId);
       } else {
-        applyTierBadge(tierBadge, tier);
+        applyTierBadge(tierBadge, null);
       }
       row.appendChild(tierBadge);
     }
