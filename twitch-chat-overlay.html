@@ -838,11 +838,13 @@
       subscriberBadgeTierMap.clear();
       subSet.versions.forEach(v=>{
         const title = (v.title || '').toLowerCase();
+        const n = parseInt(v.id, 10);
         let tier = '1000';
-        if(title.indexOf('tier 3') !== -1) tier = '3000';
-        else if(title.indexOf('tier 2') !== -1) tier = '2000';
+        if(title.indexOf('tier 3') !== -1 || (!isNaN(n) && n >= 3000)) tier = '3000';
+        else if(title.indexOf('tier 2') !== -1 || (!isNaN(n) && n >= 2000)) tier = '2000';
         subscriberBadgeTierMap.set(v.id, tier);
       });
+      console.log('Sub-Badge-Versionen (zur Kontrolle):', subSet.versions.map(v=>({ id:v.id, title:v.title, ermittelteTier:subscriberBadgeTierMap.get(v.id) })));
     }catch(e){ /* egal, dann bleibt's beim generischen "Sub"-Badge */ }
   }
 
