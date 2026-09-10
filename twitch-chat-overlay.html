@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Liga Chat Overlay</title>
+<style>
+  :root{
+    --ink:#1b1712;
+    --panel: rgba(23,19,14,0.72);
+    --panel-solid:#1f1a13;
+    --parchment:#ede4d3;
+    --parchment-dim:#c9bda3;
+    --gold:#c9a227;
+    --bronze:#b08d57;
+    --silver:#c9c9c9;
+    --gold-tier:#e0b83a;
+    --green:#5fae6b;
+    --red:#c1554a;
+    --border:#3a2f22;
+  }
+  html,body{
+    margin:0; padding:0;
+    background: var(--ink); /* dunkler Standard-Hintergrund für normale Browser-Ansicht */
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    color: var(--parchment);
+    height:100%;
+  }
+  body.obs-transparent, body.obs-transparent #app{
+    background: transparent; /* nur für OBS Browser Source aktivieren */
+  }
+  #app{
+    display:flex; flex-direction:column;
+    height:100vh;
+    width:100vw;
+    box-sizing:border-box;
+  }
+  /* ---------- Kopfleiste / Einstellungen ---------- */
+  #topbar{
+    display:flex; align-items:center; gap:8px;
+    padding:6px 10px;
+    background: var(--panel-solid);
+    border-bottom:1px solid var(--border);
+    font-size:12px;
+  }
+  #topbar.hidden-for-obs{ display:none; }
+  #topbar button{
+    background: var(--ink);
+    color: var(--parchment);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:4px 8px;
+    cursor:pointer;
+    font-size:12px;
+  }
+  #topbar button:hover{ border-color:var(--gold); }
+  #statusDot{ width:8px; height:8px; border-radius:50%; background:var(--red); display:inline-block; }
+  #statusDot.on{ background:var(--green); }
+  #tierStatus{ opacity:0.75; }
+
+  #settingsPanel{
+    display:none;
+    flex-direction:column;
+    gap:8px;
+    padding:12px;
+    background: var(--panel-solid);
+    border-bottom:1px solid var(--border);
+    font-size:12px;
+  }
+  #settingsPanel.open{ display:flex; }
+  #settingsPanel label{ display:flex; flex-direction:column; gap:3px; }
+  #settingsPanel input, #settingsPanel textarea{
+    background:#12100c; color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:5px 7px; font-size:12px; font-family:inherit;
+  }
+  #settingsPanel textarea{ resize:vertical; min-height:44px; }
+  #settingsPanel .row{ display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
+  #settingsPanel small{ color:var(--parchment-dim); line-height:1.4; }
+  #settingsPanel a{ color:var(--gold); }
+
+  /* ---------- Chat ---------- */
+  #chat{
+    flex:1;
+    overflow-y:hidden;
+    display:flex; flex-direction:column;
+    justify-content:flex-end;
+    padding:8px 10px;
+    gap:4px;
+  }
+  .chat-row{
+    display:flex; align-items:baseline; gap:6px;
+    padding:4px 8px;
+    border-radius:5px;
+    background: var(--panel);
+    border-left:3px solid var(--border);
+    font-size: 16px;
+    line-height:1.35;
+    word-break: break-word;
+  }
+  .chat-row.first-greeting{
+    border-left-color: var(--gold);
+    animation: glow-pulse 3.4s ease-out 1;
+  }
+  @keyframes glow-pulse{
+    0%   { box-shadow: 0 0 0 0 rgba(201,162,39,0);   background-color: rgba(201,162,39,0.38); }
+    45%  { box-shadow: 0 0 16px 3px rgba(201,162,39,0.55); background-color: rgba(201,162,39,0.24); }
+    100% { box-shadow: 0 0 0 0 rgba(201,162,39,0);   background-color: rgba(23,19,14,0.72); }
+  }
+
+  .status-icon{ flex:0 0 auto; width:15px; height:15px; display:inline-flex; }
+  .status-icon svg{ width:15px; height:15px; }
+  .status-icon.ok svg{ stroke: var(--green); }
+  .status-icon.no svg{ stroke: var(--red); }
+
+  .role-badge, .tier-badge{
+    flex:0 0 auto;
+    font-size:10px;
+    font-weight:600;
+    padding:1px 5px;
+    border-radius:3px;
+    line-height:1.5;
+  }
+  .role-broadcaster{ background:#7a2b2b; color:#f3d9c9; }
+  .role-mod{ background:#2b5e3a; color:#d7f0dd; }
+  .role-vip{ background:#7a2b6a; color:#f3d3ec; }
+
+  .tier-badge{ color:#1b1712; }
+  .tier-1{ background: var(--bronze); }
+  .tier-2{ background: var(--silver); }
+  .tier-3{ background: var(--gold-tier); }
+  .tier-sub{ background: var(--parchment-dim); }
+
+  .display-name{ font-weight:700; flex:0 0 auto; }
+  .message-text{ color: var(--parchment); }
+
+  #emptyHint{
+    color: var(--parchment-dim);
+    font-size:13px;
+    padding:8px;
+    display:none;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <span id="statusDot"></span>
+    <span id="connLabel">nicht verbunden</span>
+    <span style="opacity:0.4">|</span>
+    <span id="tierStatus">Sub-Tier: aus</span>
+    <button id="toggleSettings">⚙ Einstellungen</button>
+    <button id="resetSessionBtn" title="Setzt die Liste der bereits Begrüßten zurück (z.B. zu Sende-Beginn)">Neue Session</button>
+  </div>
+
+  <div id="settingsPanel">
+    <div class="row">
+      <label>Twitch-Channel (Name aus der URL)
+        <input id="channelInput" placeholder="z.B. meinkanal">
+      </label>
+      <button id="connectBtn">Chat verbinden</button>
+    </div>
+
+    <div class="row">
+      <label style="flex:1;min-width:220px">Twitch Client-ID (für echte T1/T2/T3-Anzeige)
+        <input id="clientIdInput" placeholder="Client-ID aus dev.twitch.tv/console">
+      </label>
+      <button id="loginBtn">Mit Twitch verbinden (Login)</button>
+    </div>
+    <small>
+      Ohne Login wird bei Abos nur ein neutrales „Sub"-Badge angezeigt (Twitch verrät die Stufe nicht öffentlich im Chat).
+      Für echte T1/T2/T3-Badges brauchst du einmalig eine eigene Twitch-App:
+      <a href="https://dev.twitch.tv/console/apps" target="_blank">dev.twitch.tv/console/apps</a> →
+      neue App anlegen → als „OAuth Redirect URL" <b>genau die Adresse eintragen, unter der diese Datei später erreichbar ist</b>
+      (z.B. eine GitHub-Pages-URL oder <code>http://localhost:PORT/...</code>, wenn du sie lokal per kleinem Webserver öffnest —
+      ein reines <code>file://</code> funktioniert bei Twitch-Login nicht). Die Client-ID hier eintragen, dann auf „Mit Twitch verbinden" klicken.
+    </small>
+
+    <div class="row">
+      <label style="flex:1">Begrüßungs-Wörter (kommagetrennt, gelten als „hat begrüßt")
+        <textarea id="greetingsInput"></textarea>
+      </label>
+    </div>
+    <div class="row">
+      <button id="saveSettingsBtn">Speichern</button>
+      <button id="obsModeBtn">OBS-Modus (Leiste ausblenden)</button>
+      <button id="transparentBtn">Transparenz an/aus (für OBS)</button>
+    </div>
+  </div>
+
+  <div id="chat">
+    <div id="emptyHint">Noch keine Nachrichten. Channel eintragen und „Chat verbinden" klicken.</div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"></polyline></svg>';
+  const CROSS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg>';
+
+  const DEFAULT_GREETINGS = [
+    'moin','moinsen','hi','hey','hallo','servus','yo','sup','tach','tachchen',
+    'huhu','hoi','ahoi','abend','n\'abend','nabend','morgen','gutenmorgen','gutenabend'
+  ];
+
+  const els = {
+    channel: document.getElementById('channelInput'),
+    clientId: document.getElementById('clientIdInput'),
+    greetings: document.getElementById('greetingsInput'),
+    connectBtn: document.getElementById('connectBtn'),
+    loginBtn: document.getElementById('loginBtn'),
+    saveBtn: document.getElementById('saveSettingsBtn'),
+    obsModeBtn: document.getElementById('obsModeBtn'),
+    transparentBtn: document.getElementById('transparentBtn'),
+    toggleSettings: document.getElementById('toggleSettings'),
+    resetBtn: document.getElementById('resetSessionBtn'),
+    panel: document.getElementById('settingsPanel'),
+    topbar: document.getElementById('topbar'),
+    statusDot: document.getElementById('statusDot'),
+    connLabel: document.getElementById('connLabel'),
+    tierStatus: document.getElementById('tierStatus'),
+    chat: document.getElementById('chat'),
+    emptyHint: document.getElementById('emptyHint'),
+  };
+
+  let ws = null;
+  let accessToken = null;
+  let broadcasterId = null;
+  let clientId = '';
+  const tierCache = new Map();      // userId -> '1000' | '2000' | '3000' | null
+  const pendingLookups = new Set();
+  let batchTimer = null;
+  let greetedUsers = new Set();     // userId, die in dieser Session schon begrüßt haben
+  const MAX_ROWS = 80;
+
+  // ---------- Konfiguration laden/speichern ----------
+  function loadConfig(){
+    let cfg = {};
+    try{ cfg = JSON.parse(localStorage.getItem('ligaChatOverlayConfig') || '{}'); }catch(e){}
+    els.channel.value = cfg.channel || '';
+    els.clientId.value = cfg.clientId || '';
+    els.greetings.value = (cfg.greetings && cfg.greetings.length ? cfg.greetings : DEFAULT_GREETINGS).join(', ');
+    clientId = cfg.clientId || '';
+    try{
+      const saved = JSON.parse(localStorage.getItem('ligaChatOverlayGreeted') || '[]');
+      greetedUsers = new Set(saved);
+    }catch(e){ greetedUsers = new Set(); }
+    accessToken = localStorage.getItem('ligaChatOverlayToken') || null;
+  }
+  function saveConfig(){
+    const cfg = {
+      channel: els.channel.value.trim(),
+      clientId: els.clientId.value.trim(),
+      greetings: getGreetingKeywords(),
+    };
+    localStorage.setItem('ligaChatOverlayConfig', JSON.stringify(cfg));
+    clientId = cfg.clientId;
+  }
+  function persistGreeted(){
+    localStorage.setItem('ligaChatOverlayGreeted', JSON.stringify(Array.from(greetedUsers)));
+  }
+  function getGreetingKeywords(){
+    return els.greetings.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  }
+
+  // ---------- UI ----------
+  els.toggleSettings.onclick = ()=> els.panel.classList.toggle('open');
+  els.saveBtn.onclick = ()=>{ saveConfig(); els.panel.classList.remove('open'); };
+  els.obsModeBtn.onclick = ()=>{
+    els.topbar.classList.add('hidden-for-obs');
+    els.panel.classList.remove('open');
+  };
+  els.transparentBtn.onclick = ()=>{
+    const on = document.body.classList.toggle('obs-transparent');
+    localStorage.setItem('ligaChatOverlayTransparent', on ? '1' : '0');
+  };
+  els.resetBtn.onclick = ()=>{
+    if(confirm('Liste der bereits begrüßten Zuschauer für eine neue Session löschen?')){
+      greetedUsers = new Set();
+      persistGreeted();
+    }
+  };
+
+  function setConnStatus(on){
+    els.statusDot.classList.toggle('on', on);
+    els.connLabel.textContent = on ? 'verbunden' : 'nicht verbunden';
+  }
+  function setTierStatus(text){ els.tierStatus.textContent = 'Sub-Tier: ' + text; }
+
+  // ---------- Twitch OAuth (Implicit Grant, nur für Sub-Tier-Abfrage) ----------
+  els.loginBtn.onclick = ()=>{
+    const cid = els.clientId.value.trim();
+    if(!cid){ alert('Bitte zuerst eine Client-ID eintragen.'); return; }
+    saveConfig();
+    const redirectUri = window.location.origin + window.location.pathname;
+    const url = 'https://id.twitch.tv/oauth2/authorize'
+      + '?client_id=' + encodeURIComponent(cid)
+      + '&redirect_uri=' + encodeURIComponent(redirectUri)
+      + '&response_type=token'
+      + '&scope=' + encodeURIComponent('channel:read:subscriptions');
+    window.location.href = url;
+  };
+
+  function handleOAuthRedirect(){
+    if(window.location.hash.includes('access_token')){
+      const params = new URLSearchParams(window.location.hash.substring(1));
+      const token = params.get('access_token');
+      if(token){
+        accessToken = token;
+        localStorage.setItem('ligaChatOverlayToken', token);
+        history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  }
+
+  async function fetchBroadcasterId(){
+    if(!accessToken || !clientId){ setTierStatus('aus'); return; }
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/users', {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(res.ok){
+        const data = await res.json();
+        broadcasterId = data.data[0].id;
+        setTierStatus('aktiv ✓');
+      } else if(res.status === 401){
+        handleAuthError();
+      } else {
+        setTierStatus('Fehler (' + res.status + ')');
+      }
+    }catch(e){ setTierStatus('Fehler'); }
+  }
+
+  function handleAuthError(){
+    accessToken = null;
+    localStorage.removeItem('ligaChatOverlayToken');
+    setTierStatus('Login abgelaufen, bitte erneut verbinden');
+  }
+
+  function queueTierLookup(userId){
+    if(tierCache.has(userId) || pendingLookups.has(userId)) return;
+    pendingLookups.add(userId);
+    if(!batchTimer) batchTimer = setTimeout(runBatch, 2500);
+  }
+
+  async function runBatch(){
+    batchTimer = null;
+    if(!accessToken || !broadcasterId){ pendingLookups.clear(); return; }
+    const ids = Array.from(pendingLookups).slice(0,100);
+    ids.forEach(id => pendingLookups.delete(id));
+    if(!ids.length) return;
+    const params = new URLSearchParams();
+    params.set('broadcaster_id', broadcasterId);
+    ids.forEach(id => params.append('user_id', id));
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/subscriptions?' + params.toString(), {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(res.ok){
+        const data = await res.json();
+        const found = new Set();
+        (data.data || []).forEach(sub=>{
+          tierCache.set(sub.user_id, sub.tier);
+          found.add(sub.user_id);
+        });
+        ids.forEach(id => { if(!found.has(id)) tierCache.set(id, null); });
+        updateRenderedTiers(ids);
+      } else if(res.status === 401){
+        handleAuthError();
+      }
+    }catch(e){ /* still be resilient, next chat message retries */ }
+  }
+
+  function updateRenderedTiers(ids){
+    ids.forEach(id=>{
+      const tier = tierCache.get(id);
+      document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(id) + '"] .tier-badge').forEach(el=>{
+        applyTierBadge(el, tier);
+      });
+    });
+  }
+  function applyTierBadge(el, tier){
+    el.classList.remove('tier-1','tier-2','tier-3','tier-sub');
+    if(tier === '1000'){ el.textContent='T1'; el.classList.add('tier-1'); }
+    else if(tier === '2000'){ el.textContent='T2'; el.classList.add('tier-2'); }
+    else if(tier === '3000'){ el.textContent='T3'; el.classList.add('tier-3'); }
+    else { el.textContent='Sub'; el.classList.add('tier-sub'); }
+  }
+
+  // ---------- Twitch IRC (anonym, nur lesend) ----------
+  els.connectBtn.onclick = ()=>{ saveConfig(); connectIRC(); };
+
+  function connectIRC(){
+    const channel = els.channel.value.trim().toLowerCase().replace(/^#/, '');
+    if(!channel) return;
+    if(ws){ try{ ws.close(); }catch(e){} }
+    ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    ws.onopen = ()=>{
+      const nick = 'justinfan' + Math.floor(Math.random()*99999);
+      ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
+      ws.send('PASS SCHMOOPIIE');
+      ws.send('NICK ' + nick);
+      ws.send('JOIN #' + channel);
+      setConnStatus(true);
+      els.emptyHint.style.display = 'none';
+    };
+    ws.onmessage = (evt)=>{
+      evt.data.split('\r\n').forEach(line=>{
+        if(!line) return;
+        if(line.startsWith('PING')){ ws.send('PONG :tmi.twitch.tv'); return; }
+        if(line.indexOf('PRIVMSG') !== -1) handlePrivmsg(line);
+      });
+    };
+    ws.onclose = ()=>{ setConnStatus(false); setTimeout(()=>{ if(els.channel.value.trim()) connectIRC(); }, 4000); };
+    ws.onerror = ()=>{ try{ ws.close(); }catch(e){} };
+  }
+
+  function parseTags(tagStr){
+    const tags = {};
+    tagStr.split(';').forEach(pair=>{
+      const idx = pair.indexOf('=');
+      if(idx === -1) return;
+      tags[pair.substring(0,idx)] = pair.substring(idx+1);
+    });
+    return tags;
+  }
+
+  function handlePrivmsg(line){
+    let tagStr = '', rest = line;
+    if(line.startsWith('@')){
+      const spaceIdx = line.indexOf(' ');
+      tagStr = line.substring(1, spaceIdx);
+      rest = line.substring(spaceIdx + 1);
+    }
+    const tags = parseTags(tagStr);
+    const privIdx = rest.indexOf('PRIVMSG');
+    const afterPriv = rest.substring(privIdx);
+    const msgIdx = afterPriv.indexOf(' :');
+    if(msgIdx === -1) return;
+    const message = afterPriv.substring(msgIdx + 2);
+
+    const displayName = tags['display-name'] || 'unbekannt';
+    const userId = tags['user-id'] || displayName;
+    const color = tags['color'] && tags['color'] !== '' ? tags['color'] : '#c9a227';
+    const badges = {};
+    (tags['badges'] || '').split(',').forEach(b=>{
+      const parts = b.split('/');
+      if(parts[0]) badges[parts[0]] = parts[1];
+    });
+    renderMessage({ displayName, userId, color, badges, message });
+  }
+
+  function isGreetingMessage(msg){
+    const clean = msg.toLowerCase().replace(/[.,!?;:()"']/g, '');
+    const words = clean.split(/\s+/).filter(Boolean).slice(0, 4);
+    const keywords = getGreetingKeywords();
+    return words.some(w => keywords.includes(w));
+  }
+
+  function renderMessage({ displayName, userId, color, badges, message }){
+    const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber');
+    const greeting = isGreetingMessage(message);
+    const alreadyGreeted = greetedUsers.has(userId);
+    let firstGreeting = false;
+    if(greeting && !alreadyGreeted){
+      greetedUsers.add(userId);
+      persistGreeted();
+      firstGreeting = true;
+    }
+    const greetedNow = greetedUsers.has(userId);
+
+    const row = document.createElement('div');
+    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '');
+    row.dataset.userId = userId;
+
+    const statusIcon = document.createElement('span');
+    statusIcon.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
+    statusIcon.innerHTML = greetedNow ? CHECK_SVG : CROSS_SVG;
+    row.appendChild(statusIcon);
+
+    if(badges.broadcaster){
+      const b = document.createElement('span');
+      b.className = 'role-badge role-broadcaster'; b.textContent = 'Streamer';
+      row.appendChild(b);
+    } else if(badges.moderator){
+      const b = document.createElement('span');
+      b.className = 'role-badge role-mod'; b.textContent = 'Mod';
+      row.appendChild(b);
+    } else if(badges.vip){
+      const b = document.createElement('span');
+      b.className = 'role-badge role-vip'; b.textContent = 'VIP';
+      row.appendChild(b);
+    }
+
+    if(isSub){
+      const tierBadge = document.createElement('span');
+      tierBadge.className = 'tier-badge';
+      const tier = tierCache.get(userId);
+      if(tier === undefined){
+        tierBadge.textContent = '…';
+        queueTierLookup(userId);
+      } else {
+        applyTierBadge(tierBadge, tier);
+      }
+      row.appendChild(tierBadge);
+    }
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'display-name';
+    nameSpan.style.color = color;
+    nameSpan.textContent = displayName + ':';
+    row.appendChild(nameSpan);
+
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'message-text';
+    msgSpan.textContent = ' ' + message;
+    row.appendChild(msgSpan);
+
+    els.chat.appendChild(row);
+    els.chat.scrollTop = els.chat.scrollHeight;
+    trimOldMessages();
+  }
+
+  function trimOldMessages(){
+    while(els.chat.children.length > MAX_ROWS + 1){ // +1 wegen emptyHint
+      const first = els.chat.children[0];
+      if(first === els.emptyHint) { els.chat.removeChild(els.chat.children[1]); }
+      else els.chat.removeChild(first);
+    }
+  }
+
+  // ---------- Start ----------
+  loadConfig();
+  if(localStorage.getItem('ligaChatOverlayTransparent') === '1'){
+    document.body.classList.add('obs-transparent');
+  }
+  handleOAuthRedirect();
+  if(accessToken) fetchBroadcasterId(); else setTierStatus('aus');
+  if(els.channel.value.trim()) connectIRC();
+})();
+</script>
+</body>
+</html>
