@@ -405,7 +405,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v29 · 10.09.2026';
+  const OVERLAY_VERSION = 'v30 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -943,9 +943,9 @@
       updateRenderedTiers([targetUserId]);
     }
 
-    // Twitch liefert für Sub/Resub/Gift/Raid & Co. schon einen fertig formulierten Text mit — als Alert-Zeile anzeigen
-    const systemMsg = unescapeIrcTagValue(tags['system-msg']);
-    if(systemMsg){
+    // Eigener deutscher Text statt Twitchs englischem system-msg — als Alert-Zeile anzeigen
+    const alertText = buildGermanAlertText(tags);
+    if(alertText){
       const rest = line.substring(spaceIdx + 1);
       const noticeIdx = rest.indexOf('USERNOTICE');
       let extraMsg = '';
@@ -954,7 +954,52 @@
         const msgIdx = afterNotice.indexOf(' :');
         if(msgIdx !== -1) extraMsg = afterNotice.substring(msgIdx + 2);
       }
-      renderAlert(systemMsg, extraMsg);
+      const extraEmotes = parseEmoteTag(tags['emotes'] || '');
+      renderAlert(alertText, extraMsg, extraEmotes);
+    }
+  }
+
+  function tierWord(planTag){
+    if(planTag === 'Prime') return 'Prime';
+    if(planTag === '2000') return '2';
+    if(planTag === '3000') return '3';
+    return '1';
+  }
+
+  function buildGermanAlertText(tags){
+    const name = tags['display-name'] || tags['login'] || 'Jemand';
+    const tier = tierWord(tags['msg-param-sub-plan']);
+    const tierLabel = tier === 'Prime' ? 'Prime' : ('Tier ' + tier);
+    switch(tags['msg-id']){
+      case 'sub':
+        return name + ' hat gerade mit ' + tierLabel + ' abonniert! 🎉';
+      case 'resub': {
+        const cumulative = tags['msg-param-cumulative-months'] || tags['msg-param-months'] || '?';
+        const streak = tags['msg-param-streak-months'];
+        const streakPart = streak && streak !== '0' ? ' (' + streak + ' Monate am Stück)' : '';
+        return name + ' ist seit ' + cumulative + ' Monaten dabei' + streakPart + ' — ' + tierLabel + '! 🎉';
+      }
+      case 'subgift':
+        return name + ' hat ' + (tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
+      case 'anonsubgift':
+        return 'Jemand hat ' + (tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
+      case 'submysterygift': {
+        const count = tags['msg-param-mass-gift-count'] || '?';
+        const total = tags['msg-param-sender-count'];
+        return name + ' verschenkt ' + count + ' ' + tierLabel + ' Abos an die Community!' + (total ? ' (insgesamt ' + total + ' im Kanal verschenkt)' : '') + ' 🎁';
+      }
+      case 'giftpaidupgrade':
+        return name + ' hat sein geschenktes Abo in ein bezahltes umgewandelt! 💛';
+      case 'anongiftpaidupgrade':
+        return name + ' hat ein anonym geschenktes Abo in ein bezahltes umgewandelt! 💛';
+      case 'primepaidupgrade':
+        return name + ' hat von Prime auf ' + tierLabel + ' umgestellt! 💛';
+      case 'raid':
+        return name + ' raidet mit ' + (tags['msg-param-viewerCount'] || '?') + ' Zuschauern rein! 🚀';
+      case 'bitsbadgetier':
+        return name + ' hat die ' + (tags['msg-param-threshold'] || '') + '-Bits-Marke geknackt! 💎';
+      default:
+        return unescapeIrcTagValue(tags['system-msg']); // Fallback: Twitchs Original-Text (Englisch), falls Typ unbekannt
     }
   }
 
@@ -963,7 +1008,7 @@
     return v.replace(/\\s/g, ' ').replace(/\\:/g, ';').replace(/\\\\/g, '\\').replace(/\\r/g, '').replace(/\\n/g, ' ');
   }
 
-  function renderAlert(systemMsg, extraMsg){
+  function renderAlert(text, extraMsg, extraEmotes){
     const row = document.createElement('div');
     row.className = 'chat-row alert-row';
     const icon = document.createElement('span');
@@ -972,7 +1017,9 @@
     row.appendChild(icon);
     const textSpan = document.createElement('span');
     textSpan.className = 'alert-text';
-    textSpan.textContent = systemMsg + (extraMsg ? '  „' + extraMsg + '"' : '');
+    let html = escapeHtml(text);
+    if(extraMsg) html += '  „' + buildMessageHtml(extraMsg, extraEmotes) + '"';
+    textSpan.innerHTML = html;
     row.appendChild(textSpan);
 
     const wasNearBottom = isNearBottom();
