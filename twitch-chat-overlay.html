@@ -244,8 +244,7 @@
     <span style="opacity:0.4">|</span>
     <span id="tierStatus">Sub-Tier: aus</span>
     <button id="toggleSettings">⚙ Einstellungen</button>
-    <button id="resetSessionBtn" title="Setzt die Liste der bereits Begrüßten nur bei DIR zurück">Neue Session (nur ich)</button>
-    <button id="resetAllSessionBtn" style="display:none" title="Setzt die Begrüßungs-Session bei DIR UND allen anderen mit offenem Tool zurück">Neue Session (ALLE)</button>
+    <button id="resetAllSessionBtn" style="display:none" title="Setzt die Begrüßungs-Session für dich und alle anderen zurück (läuft normalerweise automatisch beim ersten Verbinden pro Tag — dieser Knopf ist nur fürs Sicherheitsnetz da, z.B. bei einem 2. Stream am selben Tag)">Neue Session für alle</button>
     <button id="modViewBtn" style="display:none">🛡 Mod-Ansicht</button>
     <button id="streamViewBtn">📺 Stream</button>
     <span id="versionLabel" style="margin-left:auto; opacity:0.5; font-size:11px;"></span>
@@ -406,7 +405,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v32 · 10.09.2026';
+  const OVERLAY_VERSION = 'v35 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -419,7 +418,6 @@
     obsModeBtn: document.getElementById('obsModeBtn'),
     transparentBtn: document.getElementById('transparentBtn'),
     toggleSettings: document.getElementById('toggleSettings'),
-    resetBtn: document.getElementById('resetSessionBtn'),
     resetAllBtn: document.getElementById('resetAllSessionBtn'),
     panel: document.getElementById('settingsPanel'),
     topbar: document.getElementById('topbar'),
@@ -580,20 +578,20 @@
     const on = document.body.classList.toggle('obs-transparent');
     localStorage.setItem('ligaChatOverlayTransparent', on ? '1' : '0');
   };
-  els.resetBtn.onclick = ()=>{
-    if(confirm('Liste der bereits begrüßten Zuschauer NUR BEI DIR für eine neue Session löschen?')){
-      resetGreetings();
-    }
-  };
   els.resetAllBtn.onclick = ()=>{
     if(confirm('Begrüßungs-Session bei DIR UND allen anderen mit offenem Tool (z.B. Mods) zurücksetzen?')){
-      resetGreetings();
+      resetGreetingsForAll();
       if(ws && ws.readyState === 1 && els.channel.value.trim()){
         ws.send('PRIVMSG #' + els.channel.value.trim().toLowerCase() + ' :' + GREETING_RESET_COMMAND);
       }
     }
   };
   function resetGreetings(){
+    // NUR lokal — wird absichtlich nicht an den Sync-Server gemeldet (das ist der "nur ich"-Reset)
+    greetedUsers = new Set();
+    persistGreeted();
+  }
+  function resetGreetingsForAll(){
     greetedUsers = new Set();
     persistGreeted();
     syncSend({ type: 'resetGreetings' });
@@ -801,6 +799,16 @@
       els.modViewBtn.style.display = isMod ? '' : 'none';
       els.resetAllBtn.style.display = isMod ? '' : 'none';
       updateChatInputVisibility();
+
+      // Automatischer Session-Reset: einmal pro Kalendertag, nur wenn DER STREAMER SELBST sich einloggt
+      if(ownUserId === broadcasterId){
+        const today = new Date().toISOString().slice(0, 10);
+        if(localStorage.getItem('ligaChatOverlayLastAutoReset') !== today){
+          localStorage.setItem('ligaChatOverlayLastAutoReset', today);
+          resetGreetingsForAll();
+        }
+      }
+
       await fetchChannelBadges();
       if(subscriberBadgeTierMap.size > 0) setTierStatus('aktiv ✓');
       else if(subscriptionsAvailable) setTierStatus('aktiv ✓ (im Chat aber nur generisches "Sub"-Badge, keine Tier-Badge-Daten im Kanal gefunden)');
