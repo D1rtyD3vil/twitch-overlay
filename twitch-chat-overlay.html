@@ -166,6 +166,7 @@
 
   .display-name{ font-weight:700; flex:0 0 auto; }
   .message-text{ color: var(--parchment); }
+  .chat-emote{ height:1.5em; width:auto; vertical-align:middle; margin:0 1px; display:inline-block; }
 
   #emptyHint{
     color: var(--parchment-dim);
@@ -543,14 +544,9 @@
       broadcasterId = channelId;
       setTierStatus('aktiv ✓');
 
-      // Mod-/Streamer-Check: nur Streamer + Mods dürfen die Banned-Users-Liste lesen
+      // Mod-/Streamer-Check: die zuverlässige Bestätigung kommt gleich per IRC (USERSTATE),
+      // hier schon mal die einfache Sofort-Erkennung für den Streamer selbst
       isMod = (ownUserId === broadcasterId);
-      if(!isMod){
-        const modRes = await fetch('https://api.twitch.tv/helix/moderation/banned?broadcaster_id=' + broadcasterId + '&first=1', {
-          headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
-        });
-        isMod = modRes.ok;
-      }
       els.modViewBtn.style.display = isMod ? '' : 'none';
       updateChatInputVisibility();
     }catch(e){ setTierStatus('Fehler'); }
@@ -661,7 +657,8 @@
       evt.data.split('\r\n').forEach(line=>{
         if(!line) return;
         if(line.startsWith('PING')){ ws.send('PONG :tmi.twitch.tv'); return; }
-        if(line.indexOf('PRIVMSG') !== -1) handlePrivmsg(line);
+        if(line.indexOf('PRIVMSG') !== -1){ handlePrivmsg(line); return; }
+        if(line.indexOf('USERSTATE') !== -1){ handleUserState(line); return; }
       });
     };
     ws.onclose = ()=>{ setConnStatus(false); setTimeout(()=>{ if(els.channel.value.trim()) connectIRC(); }, 4000); };
@@ -676,6 +673,19 @@
       tags[pair.substring(0,idx)] = pair.substring(idx+1);
     });
     return tags;
+  }
+
+  function handleUserState(line){
+    // Twitchs eigene, verlässliche Statusmeldung: nur bei authentifizierter Verbindung sinnvoll gefüllt
+    if(!line.startsWith('@')) return;
+    const spaceIdx = line.indexOf(' ');
+    const tags = parseTags(line.substring(1, spaceIdx));
+    const badges = tags['badges'] || '';
+    const nowMod = tags['mod'] === '1' || badges.indexOf('moderator') !== -1 || badges.indexOf('broadcaster') !== -1;
+    if(nowMod !== isMod){
+      isMod = nowMod;
+      els.modViewBtn.style.display = isMod ? '' : 'none';
+    }
   }
 
   function handlePrivmsg(line){
@@ -700,7 +710,48 @@
       const parts = b.split('/');
       if(parts[0]) badges[parts[0]] = parts[1];
     });
-    renderMessage({ displayName, userId, color, badges, message });
+    const emotes = parseEmoteTag(tags['emotes'] || '');
+    renderMessage({ displayName, userId, color, badges, message, emotes });
+  }
+
+  function parseEmoteTag(tag){
+    if(!tag) return [];
+    const result = [];
+    tag.split('/').forEach(part=>{
+      const sepIdx = part.indexOf(':');
+      if(sepIdx === -1) return;
+      const id = part.substring(0, sepIdx);
+      const ranges = part.substring(sepIdx + 1);
+      ranges.split(',').forEach(r=>{
+        const dashIdx = r.indexOf('-');
+        if(dashIdx === -1) return;
+        const start = parseInt(r.substring(0, dashIdx), 10);
+        const end = parseInt(r.substring(dashIdx + 1), 10);
+        if(!isNaN(start) && !isNaN(end)) result.push({ id, start, end });
+      });
+    });
+    result.sort((a,b)=> a.start - b.start);
+    return result;
+  }
+
+  function escapeHtml(str){
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function buildMessageHtml(message, emotes){
+    if(!emotes || !emotes.length) return escapeHtml(message);
+    let html = '', cursor = 0;
+    emotes.forEach(em=>{
+      if(em.start > cursor) html += escapeHtml(message.slice(cursor, em.start));
+      const emoteText = message.slice(em.start, em.end + 1);
+      const animatedUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + em.id + '/animated/dark/3.0';
+      const staticUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + em.id + '/static/dark/3.0';
+      html += '<img class="chat-emote" src="' + animatedUrl + '" alt="' + escapeHtml(emoteText) + '" title="' + escapeHtml(emoteText) + '" '
+            + 'onerror="this.onerror=null;this.src=\'' + staticUrl + '\';">';
+      cursor = em.end + 1;
+    });
+    if(cursor < message.length) html += escapeHtml(message.slice(cursor));
+    return html;
   }
 
   function isGreetingMessage(msg){
@@ -710,7 +761,7 @@
     return words.some(w => keywords.includes(w));
   }
 
-  function renderMessage({ displayName, userId, color, badges, message }){
+  function renderMessage({ displayName, userId, color, badges, message, emotes }){
     const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber');
     const greeting = isGreetingMessage(message);
     const alreadyGreeted = greetedUsers.has(userId);
@@ -767,7 +818,7 @@
 
     const msgSpan = document.createElement('span');
     msgSpan.className = 'message-text';
-    msgSpan.textContent = ' ' + message;
+    msgSpan.innerHTML = ' ' + buildMessageHtml(message, emotes);
     row.appendChild(msgSpan);
 
     els.chat.appendChild(row);
