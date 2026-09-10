@@ -173,6 +173,26 @@
     padding:8px;
     display:none;
   }
+
+  #chatInputBar{
+    display:none;
+    align-items:center; gap:8px;
+    padding:8px 10px;
+    background: var(--panel-solid);
+    border-top:1px solid var(--border);
+  }
+  #chatInputBar.visible{ display:flex; }
+  #chatInputBar input{
+    flex:1;
+    background:#12100c; color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:6px 8px; font-size:13px; font-family:inherit;
+  }
+  #chatInputBar button{
+    background: var(--gold); color:#1a0f00; font-weight:700;
+    border:none; border-radius:4px;
+    padding:6px 14px; cursor:pointer; font-size:13px;
+  }
 </style>
 </head>
 <body>
@@ -247,6 +267,11 @@
     <div id="emptyHint">Noch keine Nachrichten. Channel eintragen und „Chat verbinden" klicken.</div>
   </div>
 
+  <div id="chatInputBar">
+    <input id="chatMessageInput" type="text" placeholder="Nachricht in den Chat schreiben..." maxlength="500">
+    <button id="sendChatBtn">Senden</button>
+  </div>
+
 </div>
 
 <script>
@@ -257,8 +282,8 @@
   // Hier einmalig eintragen, bevor du die Datei hochlädst: dann müssen Mods
   // NUR NOCH auf "Mit Twitch verbinden" klicken — Channel + Client-ID sind
   // schon vorausgefüllt, kein Rumtippen für jeden Mod nötig.
-  const DEFAULT_CLIENT_ID = '';   // z.B. '5495juzgyub7s2io3p42uog5s5mdf3'
-  const DEFAULT_CHANNEL   = '';   // z.B. 'd1rtyd3vil'
+  const DEFAULT_CLIENT_ID = '5495juzgyub7s2io3p42uog5s5mdf3';   // Liga Giveaway Dashboard App
+  const DEFAULT_CHANNEL   = 'd1rtyd3vil';
 
   const COLOR_SCHEMES = {
     'schwarz-rot': {
@@ -321,6 +346,9 @@
     timeoutMinutes: document.getElementById('timeoutMinutes'),
     timeoutModeBtn: document.getElementById('timeoutModeBtn'),
     timeoutStatus: document.getElementById('timeoutStatus'),
+    chatInputBar: document.getElementById('chatInputBar'),
+    chatMessageInput: document.getElementById('chatMessageInput'),
+    sendChatBtn: document.getElementById('sendChatBtn'),
   };
 
   let ws = null;
@@ -328,6 +356,7 @@
   let broadcasterId = null;   // ID des Twitch-Kanals (nicht zwingend der eingeloggte Nutzer)
   let ownUserId = null;       // ID des eingeloggten Nutzers (Streamer oder Mod)
   let ownLogin = null;
+  let ownDisplayName = null;
   let isMod = false;
   let timeoutModeActive = false;
   let clientId = '';
@@ -341,8 +370,8 @@
   function loadConfig(){
     let cfg = {};
     try{ cfg = JSON.parse(localStorage.getItem('ligaChatOverlayConfig') || '{}'); }catch(e){}
-    els.channel.value = cfg.channel || DEFAULT_CHANNEL || 'd1rtyd3vil';
-    els.clientId.value = cfg.clientId || DEFAULT_CLIENT_ID || '5495juzgyub7s2io3p42uog5s5mdf3';
+    els.channel.value = cfg.channel || DEFAULT_CHANNEL || '';
+    els.clientId.value = cfg.clientId || DEFAULT_CLIENT_ID || '';
     const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(cfg.greetings || [])]));
     els.greetings.value = merged.join(', ');
     clientId = els.clientId.value;
@@ -462,7 +491,8 @@
     const scopes = [
       'channel:read:subscriptions',
       'moderator:read:banned_users',
-      'moderator:manage:banned_users'
+      'moderator:manage:banned_users',
+      'chat:edit'
     ].join(' ');
     const url = 'https://id.twitch.tv/oauth2/authorize'
       + '?client_id=' + encodeURIComponent(cid)
@@ -497,6 +527,7 @@
       const meData = await meRes.json();
       ownUserId = meData.data[0].id;
       ownLogin = meData.data[0].login;
+      ownDisplayName = meData.data[0].display_name || ownLogin;
 
       // ID des eingestellten Twitch-Channels (kann von der eigenen abweichen, wenn ein Mod eingeloggt ist)
       let channelId = ownUserId;
@@ -521,6 +552,7 @@
         isMod = modRes.ok;
       }
       els.modViewBtn.style.display = isMod ? '' : 'none';
+      updateChatInputVisibility();
     }catch(e){ setTierStatus('Fehler'); }
   }
 
@@ -528,7 +560,30 @@
     accessToken = null;
     localStorage.removeItem('ligaChatOverlayToken');
     setTierStatus('Login abgelaufen, bitte erneut verbinden');
+    updateChatInputVisibility();
   }
+
+  function updateChatInputVisibility(){
+    const visible = !!(accessToken && ownLogin);
+    els.chatInputBar.classList.toggle('visible', visible);
+  }
+
+  function sendChatMessage(){
+    const text = els.chatMessageInput.value.trim();
+    if(!text || !ws || ws.readyState !== 1 || !accessToken || !ownLogin) return;
+    const channel = els.channel.value.trim().toLowerCase();
+    ws.send('PRIVMSG #' + channel + ' :' + text);
+    // Twitch schickt eigene Nachrichten nicht automatisch zurück -> selbst anzeigen
+    const badges = {};
+    if(ownUserId === broadcasterId) badges.broadcaster = '1';
+    else if(isMod) badges.moderator = '1';
+    renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text });
+    els.chatMessageInput.value = '';
+  }
+  els.sendChatBtn.onclick = sendChatMessage;
+  els.chatMessageInput.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
+  });
 
   function queueTierLookup(userId){
     if(tierCache.has(userId) || pendingLookups.has(userId)) return;
@@ -589,10 +644,15 @@
     if(ws){ try{ ws.close(); }catch(e){} }
     ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     ws.onopen = ()=>{
-      const nick = 'justinfan' + Math.floor(Math.random()*99999);
       ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
-      ws.send('PASS SCHMOOPIIE');
-      ws.send('NICK ' + nick);
+      if(accessToken && ownLogin){
+        ws.send('PASS oauth:' + accessToken);
+        ws.send('NICK ' + ownLogin);
+      } else {
+        const nick = 'justinfan' + Math.floor(Math.random()*99999);
+        ws.send('PASS SCHMOOPIIE');
+        ws.send('NICK ' + nick);
+      }
       ws.send('JOIN #' + channel);
       setConnStatus(true);
       els.emptyHint.style.display = 'none';
@@ -729,8 +789,10 @@
     document.body.classList.add('obs-transparent');
   }
   handleOAuthRedirect();
-  if(accessToken) fetchAccountInfo(); else setTierStatus('aus');
-  if(els.channel.value.trim()) connectIRC();
+  (async function init(){
+    if(accessToken){ await fetchAccountInfo(); } else { setTierStatus('aus'); }
+    if(els.channel.value.trim()) connectIRC();
+  })();
 })();
 </script>
 </body>
