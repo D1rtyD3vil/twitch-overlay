@@ -276,6 +276,11 @@
       </label>
     </div>
     <div class="row">
+      <label style="flex:1">Bots ausblenden (kommagetrennt, Twitch-Login-Name, Groß/Klein egal)
+        <textarea id="blockedBotsInput"></textarea>
+      </label>
+    </div>
+    <div class="row">
       <button id="saveSettingsBtn">Speichern</button>
       <button id="obsModeBtn">OBS-Modus (Leiste ausblenden)</button>
       <button id="transparentBtn">Transparenz an/aus (für OBS)</button>
@@ -341,10 +346,17 @@
     'jo','joa','wb','welcomeback'
   ];
 
+  const DEFAULT_BLOCKED_BOTS = [
+    'nightbot','streamelements','streamlabs','moobot','fossabot','wizebot',
+    'phantombot','soundalerts','commanderroot','sery_bot','own3d','pretzelrocks',
+    'deepbot','ankhbot','vivbot','coebot','botisimo','streamlootsbot','kofistreambot'
+  ];
+
   const els = {
     channel: document.getElementById('channelInput'),
     clientId: document.getElementById('clientIdInput'),
     greetings: document.getElementById('greetingsInput'),
+    blockedBots: document.getElementById('blockedBotsInput'),
     connectBtn: document.getElementById('connectBtn'),
     loginBtn: document.getElementById('loginBtn'),
     saveBtn: document.getElementById('saveSettingsBtn'),
@@ -396,6 +408,8 @@
     els.clientId.value = cfg.clientId || DEFAULT_CLIENT_ID || '';
     const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(cfg.greetings || [])]));
     els.greetings.value = merged.join(', ');
+    const mergedBots = Array.from(new Set([...DEFAULT_BLOCKED_BOTS, ...(cfg.blockedBots || [])]));
+    els.blockedBots.value = mergedBots.join(', ');
     clientId = els.clientId.value;
     els.colorScheme.value = cfg.colorScheme && COLOR_SCHEMES[cfg.colorScheme] ? cfg.colorScheme : 'schwarz-rot';
     applyColorScheme(els.colorScheme.value);
@@ -410,6 +424,7 @@
       channel: els.channel.value.trim(),
       clientId: els.clientId.value.trim(),
       greetings: getGreetingKeywords(),
+      blockedBots: getBlockedBots(),
       colorScheme: els.colorScheme.value,
     };
     localStorage.setItem('ligaChatOverlayConfig', JSON.stringify(cfg));
@@ -436,6 +451,9 @@
   }
   function getGreetingKeywords(){
     return els.greetings.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  }
+  function getBlockedBots(){
+    return els.blockedBots.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
   }
 
   // ---------- UI ----------
@@ -514,6 +532,7 @@
       'channel:read:subscriptions',
       'moderator:read:banned_users',
       'moderator:manage:banned_users',
+      'chat:read',
       'chat:edit'
     ].join(' ');
     const url = 'https://id.twitch.tv/oauth2/authorize'
@@ -758,6 +777,9 @@
       rest = line.substring(spaceIdx + 1);
     }
     const tags = parseTags(tagStr);
+    const loginMatch = rest.match(/^:([^!]+)!/);
+    const login = (loginMatch ? loginMatch[1] : (tags['display-name'] || '')).toLowerCase();
+    if(getBlockedBots().includes(login)) return; // Bot-Nachricht -> komplett ignorieren
     const privIdx = rest.indexOf('PRIVMSG');
     const afterPriv = rest.substring(privIdx);
     const msgIdx = afterPriv.indexOf(' :');
@@ -773,7 +795,23 @@
       if(parts[0]) badges[parts[0]] = parts[1];
     });
     const emotes = parseEmoteTag(tags['emotes'] || '');
-    renderMessage({ displayName, userId, color, badges, message, emotes });
+    const cleaned = stripActionWrapper(message, emotes);
+    renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes });
+  }
+
+  function stripActionWrapper(message, emotes){
+    // /me-Nachrichten (z.B. von Bots) kommen als "\x01ACTION text\x01" — Positionen entsprechend verschieben
+    const ACTION_PREFIX = '\u0001ACTION ';
+    if(message.startsWith(ACTION_PREFIX) && message.endsWith('\u0001')){
+      const offset = ACTION_PREFIX.length;
+      const stripped = message.slice(offset, -1);
+      const adjusted = (emotes || [])
+        .map(em => ({ id: em.id, start: em.start - offset, end: em.end - offset }))
+        .filter(em => em.start >= 0 && em.end < stripped.length)
+        .map(em => ({ id: em.id, start: em.start + 2, end: em.end + 2 })); // +2 wegen vorangestelltem "* "
+      return { message: '* ' + stripped, emotes: adjusted };
+    }
+    return { message, emotes: emotes || [] };
   }
 
   function parseEmoteTag(tag){
@@ -804,6 +842,7 @@
     if(!emotes || !emotes.length) return escapeHtml(message);
     let html = '', cursor = 0;
     emotes.forEach(em=>{
+      if(em.start < cursor || em.end < em.start || em.end >= message.length) return; // ungültig/überlappend -> überspringen
       if(em.start > cursor) html += escapeHtml(message.slice(cursor, em.start));
       const emoteText = message.slice(em.start, em.end + 1);
       const animatedUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + em.id + '/animated/dark/3.0';
