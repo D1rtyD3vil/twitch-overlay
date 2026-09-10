@@ -373,7 +373,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v21 · 10.09.2026';
+  const OVERLAY_VERSION = 'v22 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -991,7 +991,10 @@
     const clean = msg.toLowerCase().replace(/[.,!?;:()"'\/_\-]/g, ' ');
     const words = clean.split(/\s+/).filter(Boolean).slice(0, 4);
     const keywords = getGreetingKeywords();
-    return words.some(w => keywords.includes(w));
+    return words.some(w => keywords.some(k=>{
+      if(k.length <= 2) return w === k; // ganz kurze Wörter (hi, na, jo, wb...) nur exakt, sonst zu viele Fehltreffer
+      return w === k || (w.startsWith(k) && w.length <= k.length + 3); // erlaubt z.B. "moinsens" für "moinsen"
+    }));
   }
 
   function renderMessage({ displayName, userId, color, badges, message, emotes }){
