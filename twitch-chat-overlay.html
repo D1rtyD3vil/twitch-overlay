@@ -6,20 +6,20 @@
 <style>
   :root{
     /* Stream-Look: Schwarz / Rot / Neon-Orange (Dirty Devil) — Standard, per Farbschema-Auswahl änderbar */
-    --ink:#0b0909;
-    --panel: rgba(26,10,10,0.78);
-    --panel-solid:#190d0d;
-    --parchment:#f2ece2;
-    --parchment-dim:#b89a8a;
-    --gold:#ff8a1f;
-    --gold-rgb:255,138,31;
+    --ink:#0a0a0c;
+    --panel: rgba(26,5,5,0.82);
+    --panel-solid:#1a0505;
+    --parchment:#f5eeee;
+    --parchment-dim:#cc9999;
+    --gold:#ff3b3b;
+    --gold-rgb:255,59,59;
     --bronze:#b08d57;
     --silver:#c9c9c9;
-    --gold-tier:#f2b33d;
+    --gold-tier:#ff6b6b;
     --green:#5fae6b;
     --red:#e8432f;
-    --heraldry-red:#b81f1f;
-    --border:#3a1414;
+    --heraldry-red:#ff1f1f;
+    --border:#3d0d0d;
   }
   html,body{
     margin:0; padding:0;
@@ -228,7 +228,8 @@
 
   <div id="modToolbar">
     <span>⏱ Timeout:</span>
-    <input type="number" id="timeoutSeconds" min="1" step="1" value="600"> Sek.
+    <input type="number" id="timeoutSeconds" min="1" step="1" value="600"> <span id="timeoutUnitLabel">Sek.</span>
+    <button id="timeoutUnitBtn" title="Zwischen Sekunden und Minuten umschalten">⇄ Min.</button>
     <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
     <span id="timeoutStatus"></span>
   </div>
@@ -311,27 +312,27 @@
   const COLOR_SCHEMES = {
     'schwarz-rot': {
       label:'Schwarz / Rot',
-      ink:'#0b0909', panelSolid:'#190d0d', panel:'rgba(26,10,10,0.78)', border:'#3a1414',
-      gold:'#e8432f', goldRgb:'232,67,47', goldTier:'#ff6a4a', heraldryRed:'#8f1d1d',
-      parchment:'#f2ece2', parchmentDim:'#b89a8a'
+      ink:'#0a0a0c', panelSolid:'#1a0505', panel:'rgba(26,5,5,0.82)', border:'#3d0d0d',
+      gold:'#ff3b3b', goldRgb:'255,59,59', goldTier:'#ff6b6b', heraldryRed:'#ff1f1f',
+      parchment:'#f5eeee', parchmentDim:'#cc9999'
     },
     'rot-schwarz': {
       label:'Rot / Schwarz',
-      ink:'#2b0a0a', panelSolid:'#3d0f0f', panel:'rgba(61,15,15,0.82)', border:'#180505',
-      gold:'#ff8a3d', goldRgb:'255,138,61', goldTier:'#ffb14d', heraldryRed:'#140505',
-      parchment:'#f6ece0', parchmentDim:'#d9a68f'
+      ink:'#33080a', panelSolid:'#4a0d10', panel:'rgba(74,13,16,0.85)', border:'#220606',
+      gold:'#ff7a3d', goldRgb:'255,122,61', goldTier:'#ffb14d', heraldryRed:'#1a0404',
+      parchment:'#f7ece2', parchmentDim:'#e0ad93'
     },
     'schwarz-orange': {
       label:'Schwarz / Orange',
-      ink:'#0b0909', panelSolid:'#190d0d', panel:'rgba(26,10,10,0.78)', border:'#3a1414',
-      gold:'#ff8a1f', goldRgb:'255,138,31', goldTier:'#f2b33d', heraldryRed:'#b81f1f',
-      parchment:'#f2ece2', parchmentDim:'#b89a8a'
+      ink:'#0a0a0c', panelSolid:'#1a0f05', panel:'rgba(26,15,5,0.82)', border:'#3d2409',
+      gold:'#ff9d1f', goldRgb:'255,157,31', goldTier:'#ffc247', heraldryRed:'#c2261a',
+      parchment:'#f5efe2', parchmentDim:'#d9b98a'
     },
     'orange-schwarz': {
       label:'Orange / Schwarz',
-      ink:'#331a06', panelSolid:'#43220a', panel:'rgba(67,34,10,0.82)', border:'#1c0e02',
-      gold:'#ffcf7a', goldRgb:'255,207,122', goldTier:'#ffe0a0', heraldryRed:'#140a03',
-      parchment:'#fbe9cf', parchmentDim:'#d9b98a'
+      ink:'#4a1a04', panelSolid:'#5c2206', panel:'rgba(92,34,6,0.87)', border:'#2b1203',
+      gold:'#ffcf3d', goldRgb:'255,207,61', goldTier:'#ffe27a', heraldryRed:'#1f0a02',
+      parchment:'#fff1d6', parchmentDim:'#e8b978'
     }
   };
 
@@ -342,15 +343,15 @@
     'hi','hii','hiii','hiho','hey','heyy','heyho','heyhey','heyo','hallo','hallöchen','hallochen',
     'hallihallo','hallihallöchen','servus','sers','seas','servas','seawas',
     // Tach/Tag
-    'tach','tachchen','tachtach','tagchen','tag',
+    'tach','tachchen','tachtach','tagchen','tag','mahlzeit',
     // Yo/Sup
-    'yo','yoyo','jo','joa','sup','wusup','wassup','whatsup','ayy','aye',
+    'yo','yoyo','jo','joa','sup','wusup','wassup','whatsup','ayy','aye','wasgeht','allesklar','na',
     // Huhu/Hoi/Ahoi
     'huhu','hoi','ahoi','ahoy','n7','o7',
     // Tageszeit-Grüße
     'abend','nabend','gutenabend','morgen','gutenmorgen','mornin','morning','evening','evenin','gn8',
     // Regional DACH
-    'grüezi','gruezi','grüßgott','gruessgott','grias','pfiati',
+    'grüezi','gruezi','grüßgott','gruessgott','grias','pfiati','grüßdich','gruessdich','jutentach',
     // Englisch
     'hello','hellooo','howdy','greetings','welcome','gm',
     // Internationale Grüße
@@ -372,7 +373,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v18 · 10.09.2026';
+  const OVERLAY_VERSION = 'v21 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -398,6 +399,8 @@
     modViewBtn: document.getElementById('modViewBtn'),
     modToolbar: document.getElementById('modToolbar'),
     timeoutSeconds: document.getElementById('timeoutSeconds'),
+    timeoutUnitLabel: document.getElementById('timeoutUnitLabel'),
+    timeoutUnitBtn: document.getElementById('timeoutUnitBtn'),
     timeoutModeBtn: document.getElementById('timeoutModeBtn'),
     timeoutStatus: document.getElementById('timeoutStatus'),
     chatInputBar: document.getElementById('chatInputBar'),
@@ -520,12 +523,32 @@
     els.timeoutStatus.textContent = timeoutModeActive ? 'Klick auf eine Chat-Zeile zum Timeouten.' : '';
   };
 
+  let timeoutUnit = 'sec'; // 'sec' | 'min' — nur Anzeige, gespeichert/gesendet wird immer in Sekunden
+  els.timeoutUnitBtn.onclick = ()=>{
+    const current = parseFloat(els.timeoutSeconds.value) || 0;
+    if(timeoutUnit === 'sec'){
+      timeoutUnit = 'min';
+      els.timeoutSeconds.value = Math.round((current / 60) * 10) / 10;
+      els.timeoutSeconds.step = '0.5';
+      els.timeoutUnitLabel.textContent = 'Min.';
+      els.timeoutUnitBtn.textContent = '⇄ Sek.';
+    } else {
+      timeoutUnit = 'sec';
+      els.timeoutSeconds.value = Math.round(current * 60);
+      els.timeoutSeconds.step = '1';
+      els.timeoutUnitLabel.textContent = 'Sek.';
+      els.timeoutUnitBtn.textContent = '⇄ Min.';
+    }
+  };
+
   async function executeTimeout(userId, displayName, row){
     if(!accessToken || !broadcasterId || !ownUserId){
       els.timeoutStatus.textContent = 'Nicht eingeloggt — kein Timeout möglich.';
       return;
     }
-    const duration = Math.min(1209600, Math.max(1, parseInt(els.timeoutSeconds.value, 10) || 600)); // Twitch-Limit: max. 14 Tage
+    const raw = parseFloat(els.timeoutSeconds.value) || 0;
+    const rawSeconds = timeoutUnit === 'min' ? raw * 60 : raw;
+    const duration = Math.min(1209600, Math.max(1, Math.round(rawSeconds))); // Twitch-Limit: max. 14 Tage
     els.timeoutStatus.textContent = 'Timeoute ' + displayName + ' (' + duration + ' Sek.) ...';
     try{
       const res = await fetch('https://api.twitch.tv/helix/moderation/bans?broadcaster_id=' + broadcasterId + '&moderator_id=' + ownUserId, {
