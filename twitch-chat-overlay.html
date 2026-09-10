@@ -684,7 +684,10 @@
   function connectIRC(){
     const channel = els.channel.value.trim().toLowerCase().replace(/^#/, '');
     if(!channel) return;
-    if(ws){ try{ ws.close(); }catch(e){} }
+    if(ws){
+      ws.onclose = null; // verhindert, dass die ALTE Verbindung beim Schließen selbst nochmal einen Reconnect auslöst
+      try{ ws.close(); }catch(e){}
+    }
     ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
     ws.onopen = ()=>{
       ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
