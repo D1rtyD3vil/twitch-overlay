@@ -5,20 +5,20 @@
 <title>Liga Chat Overlay</title>
 <style>
   :root{
-    /* Liga der Heftigkeiten: Holz-Braun / Gold-Orange / Rot */
-    --ink:#241609;
-    --panel: rgba(58,39,20,0.78);
-    --panel-solid:#3a2712;
-    --parchment:#f2e6c8;
-    --parchment-dim:#cbb287;
-    --gold:#d9901f;
+    /* Stream-Look: Schwarz / Rot / Neon-Orange (Dirty Devil) */
+    --ink:#0b0909;
+    --panel: rgba(26,10,10,0.78);
+    --panel-solid:#190d0d;
+    --parchment:#f2ece2;
+    --parchment-dim:#b89a8a;
+    --gold:#ff8a1f;
     --bronze:#b08d57;
     --silver:#c9c9c9;
-    --gold-tier:#e6a92f;
+    --gold-tier:#f2b33d;
     --green:#5fae6b;
-    --red:#c1554a;
-    --heraldry-red:#8a2a1e;
-    --border:#5c3d1f;
+    --red:#e8432f;
+    --heraldry-red:#b81f1f;
+    --border:#3a1414;
   }
   html,body{
     margin:0; padding:0;
@@ -104,9 +104,9 @@
     animation: glow-pulse 3.4s ease-out 1;
   }
   @keyframes glow-pulse{
-    0%   { box-shadow: 0 0 0 0 rgba(217,144,31,0);   background-color: rgba(217,144,31,0.40); }
-    45%  { box-shadow: 0 0 16px 3px rgba(217,144,31,0.55); background-color: rgba(217,144,31,0.25); }
-    100% { box-shadow: 0 0 0 0 rgba(217,144,31,0);   background-color: rgba(58,39,20,0.78); }
+    0%   { box-shadow: 0 0 0 0 rgba(255,90,30,0);   background-color: rgba(255,90,30,0.40); }
+    45%  { box-shadow: 0 0 16px 3px rgba(255,90,30,0.55); background-color: rgba(255,90,30,0.24); }
+    100% { box-shadow: 0 0 0 0 rgba(255,90,30,0);   background-color: rgba(26,10,10,0.78); }
   }
 
   .status-icon{ flex:0 0 auto; width:15px; height:15px; display:inline-flex; }
