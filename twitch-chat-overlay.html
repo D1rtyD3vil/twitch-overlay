@@ -218,6 +218,7 @@
     <button id="resetAllSessionBtn" style="display:none" title="Setzt die Begrüßungs-Session bei DIR UND allen anderen mit offenem Tool zurück">Neue Session (ALLE)</button>
     <button id="modViewBtn" style="display:none">🛡 Mod-Ansicht</button>
     <button id="streamViewBtn">📺 Stream</button>
+    <span id="versionLabel" style="margin-left:auto; opacity:0.5; font-size:11px;"></span>
   </div>
 
   <div id="streamContainer">
@@ -368,6 +369,9 @@
   ];
 
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
+
+  // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
+  const OVERLAY_VERSION = 'v16 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -741,6 +745,7 @@
       try{ ws.close(); }catch(e){}
     }
     ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    let recvBuffer = ''; // Nachrichten können auf mehrere WebSocket-Pakete verteilt ankommen -> zusammensetzen statt jedes Paket isoliert zu parsen
     ws.onopen = ()=>{
       ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
       if(accessToken && ownLogin){
@@ -756,7 +761,10 @@
       els.emptyHint.style.display = 'none';
     };
     ws.onmessage = (evt)=>{
-      evt.data.split('\r\n').forEach(line=>{
+      recvBuffer += evt.data;
+      const lines = recvBuffer.split('\r\n');
+      recvBuffer = lines.pop(); // letztes, evtl. unvollständiges Fragment für den nächsten Empfang aufheben
+      lines.forEach(line=>{
         if(!line) return;
         if(line.startsWith('PING')){ ws.send('PONG :tmi.twitch.tv'); return; }
         if(line.indexOf('PRIVMSG') !== -1){ handlePrivmsg(line); return; }
@@ -1071,6 +1079,7 @@
   }
 
   // ---------- Start ----------
+  document.getElementById('versionLabel').textContent = OVERLAY_VERSION;
   loadConfig();
   restoreHistory();
   if(localStorage.getItem('ligaChatOverlayTransparent') === '1'){
