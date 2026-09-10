@@ -168,6 +168,19 @@
   .message-text{ color: var(--parchment); }
   .chat-emote{ height:1.5em; width:auto; vertical-align:middle; margin:0 1px; display:inline-block; }
 
+  #streamContainer{
+    display:none;
+    resize: vertical;
+    overflow:hidden;
+    height:300px;
+    min-height:120px;
+    max-height:90vh;
+    border-bottom:1px solid var(--border);
+    background:#000;
+  }
+  #streamContainer.open{ display:block; }
+  #streamContainer iframe{ width:100%; height:100%; border:none; display:block; }
+
   #emptyHint{
     color: var(--parchment-dim);
     font-size:13px;
@@ -207,6 +220,11 @@
     <button id="toggleSettings">⚙ Einstellungen</button>
     <button id="resetSessionBtn" title="Setzt die Liste der bereits Begrüßten zurück (z.B. zu Sende-Beginn)">Neue Session</button>
     <button id="modViewBtn" style="display:none">🛡 Mod-Ansicht</button>
+    <button id="streamViewBtn">📺 Stream</button>
+  </div>
+
+  <div id="streamContainer">
+    <iframe id="streamFrame" allowfullscreen></iframe>
   </div>
 
   <div id="modToolbar">
@@ -350,6 +368,9 @@
     chatInputBar: document.getElementById('chatInputBar'),
     chatMessageInput: document.getElementById('chatMessageInput'),
     sendChatBtn: document.getElementById('sendChatBtn'),
+    streamViewBtn: document.getElementById('streamViewBtn'),
+    streamContainer: document.getElementById('streamContainer'),
+    streamFrame: document.getElementById('streamFrame'),
   };
 
   let ws = null;
@@ -549,6 +570,7 @@
       isMod = (ownUserId === broadcasterId);
       els.modViewBtn.style.display = isMod ? '' : 'none';
       updateChatInputVisibility();
+      if(els.channel.value.trim()) connectIRC(); // Verbindung neu aufbauen, jetzt authentifiziert (zum Schreiben nötig)
     }catch(e){ setTierStatus('Fehler'); }
   }
 
@@ -580,6 +602,31 @@
   els.chatMessageInput.addEventListener('keydown', (e)=>{
     if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
   });
+
+  // ---------- Stream-Vorschau (einblendbar, per Ziehen an der Unterkante skalierbar) ----------
+  function loadStreamIframe(){
+    const channel = els.channel.value.trim().toLowerCase();
+    if(!channel) return;
+    const parent = window.location.hostname || 'localhost';
+    els.streamFrame.src = 'https://player.twitch.tv/?channel=' + encodeURIComponent(channel)
+      + '&parent=' + encodeURIComponent(parent) + '&muted=true';
+  }
+  els.streamViewBtn.onclick = ()=>{
+    const open = els.streamContainer.classList.toggle('open');
+    localStorage.setItem('ligaChatOverlayStreamOpen', open ? '1' : '0');
+    if(open) loadStreamIframe(); else els.streamFrame.src = '';
+  };
+  if(window.ResizeObserver){
+    new ResizeObserver(entries=>{
+      for(const e of entries){ localStorage.setItem('ligaChatOverlayStreamHeight', Math.round(e.contentRect.height) + 'px'); }
+    }).observe(els.streamContainer);
+  }
+  const savedStreamHeight = localStorage.getItem('ligaChatOverlayStreamHeight');
+  if(savedStreamHeight) els.streamContainer.style.height = savedStreamHeight;
+  if(localStorage.getItem('ligaChatOverlayStreamOpen') === '1'){
+    els.streamContainer.classList.add('open');
+    loadStreamIframe();
+  }
 
   function queueTierLookup(userId){
     if(tierCache.has(userId) || pendingLookups.has(userId)) return;
@@ -659,6 +706,7 @@
         if(line.startsWith('PING')){ ws.send('PONG :tmi.twitch.tv'); return; }
         if(line.indexOf('PRIVMSG') !== -1){ handlePrivmsg(line); return; }
         if(line.indexOf('USERSTATE') !== -1){ handleUserState(line); return; }
+        if(line.indexOf('NOTICE') !== -1){ handleNotice(line); return; }
       });
     };
     ws.onclose = ()=>{ setConnStatus(false); setTimeout(()=>{ if(els.channel.value.trim()) connectIRC(); }, 4000); };
@@ -673,6 +721,17 @@
       tags[pair.substring(0,idx)] = pair.substring(idx+1);
     });
     return tags;
+  }
+
+  function handleNotice(line){
+    const msgIdx = line.indexOf(' :');
+    const text = msgIdx !== -1 ? line.substring(msgIdx + 2) : line;
+    console.warn('Twitch NOTICE:', text);
+    if(/authentication failed|improperly formatted auth|login unsuccessful/i.test(text)){
+      els.connLabel.textContent = 'Login-Fehler: ' + text;
+      handleAuthError();
+      if(ws){ try{ ws.close(); }catch(e){} }
+    }
   }
 
   function handleUserState(line){
@@ -841,8 +900,8 @@
   }
   handleOAuthRedirect();
   (async function init(){
-    if(accessToken){ await fetchAccountInfo(); } else { setTierStatus('aus'); }
-    if(els.channel.value.trim()) connectIRC();
+    if(accessToken){ await fetchAccountInfo(); }
+    else { setTierStatus('aus'); if(els.channel.value.trim()) connectIRC(); }
   })();
 })();
 </script>
