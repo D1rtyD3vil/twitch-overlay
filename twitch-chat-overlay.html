@@ -146,6 +146,25 @@
   .alert-icon{ flex:0 0 auto; color: var(--gold); }
   .alert-text{ color: var(--parchment); font-weight:600; }
 
+  #userCardBackdrop{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:50;
+    align-items:center; justify-content:center;
+  }
+  #userCardBackdrop.open{ display:flex; }
+  #userCard{
+    background:var(--panel-solid); border:1px solid var(--border); border-radius:8px;
+    padding:16px; width:320px; max-width:85vw; max-height:75vh; overflow-y:auto;
+    color:var(--parchment); position:relative; font-size:13px;
+  }
+  #userCard h3{ margin:0 0 10px 0; padding-right:20px; }
+  #userCard .uc-row{ margin-bottom:5px; color:var(--parchment-dim); }
+  #userCard .uc-msglist{ margin-top:10px; border-top:1px solid var(--border); padding-top:8px; }
+  #userCard .uc-msglist div{ margin-bottom:4px; line-height:1.4; }
+  #userCard .uc-close{
+    position:absolute; top:10px; right:10px; cursor:pointer; background:none;
+    border:none; color:var(--parchment); font-size:16px; line-height:1;
+  }
+
   .status-icon{ flex:0 0 auto; width:15px; height:15px; display:inline-flex; cursor:pointer; }
   .status-icon:hover{ opacity:0.7; }
   .status-icon svg{ width:15px; height:15px; }
@@ -305,6 +324,10 @@
     <button id="sendChatBtn">Senden</button>
   </div>
 
+  <div id="userCardBackdrop">
+    <div id="userCard"></div>
+  </div>
+
 </div>
 
 <script>
@@ -382,7 +405,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v24 · 10.09.2026';
+  const OVERLAY_VERSION = 'v26 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -418,6 +441,8 @@
     streamViewBtn: document.getElementById('streamViewBtn'),
     streamContainer: document.getElementById('streamContainer'),
     streamFrame: document.getElementById('streamFrame'),
+    userCardBackdrop: document.getElementById('userCardBackdrop'),
+    userCard: document.getElementById('userCard'),
   };
 
   let ws = null;
@@ -532,6 +557,64 @@
     });
   }
 
+  // ---------- Personen-Infokarte ----------
+  const userMessageLog = new Map(); // userId -> [{t, text}] — nur seit Tool-Start, kein voller Twitch-Verlauf
+  function logUserMessage(userId, text){
+    if(!userMessageLog.has(userId)) userMessageLog.set(userId, []);
+    const arr = userMessageLog.get(userId);
+    arr.push({ t: Date.now(), text });
+    if(arr.length > 100) arr.shift();
+  }
+  els.userCardBackdrop.onclick = (e)=>{ if(e.target === els.userCardBackdrop) closeUserCard(); };
+  function closeUserCard(){ els.userCardBackdrop.classList.remove('open'); }
+
+  async function showUserCard(userId, displayName){
+    els.userCard.innerHTML = '<button class="uc-close" onclick="document.getElementById(\'userCardBackdrop\').classList.remove(\'open\')">✕</button>'
+      + '<h3>' + escapeHtml(displayName) + '</h3><div class="uc-row">Lade Infos...</div>';
+    els.userCardBackdrop.classList.add('open');
+
+    let createdAt = '', followSince = '';
+    if(accessToken && clientId){
+      try{
+        const res = await fetch('https://api.twitch.tv/helix/users?id=' + userId, {
+          headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+        });
+        if(res.ok){ const d = await res.json(); if(d.data && d.data[0]) createdAt = d.data[0].created_at; }
+      }catch(e){}
+      if(broadcasterId){
+        try{
+          const res2 = await fetch('https://api.twitch.tv/helix/channels/followers?broadcaster_id=' + broadcasterId + '&user_id=' + userId, {
+            headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+          });
+          if(res2.ok){ const d2 = await res2.json(); if(d2.data && d2.data[0]) followSince = d2.data[0].followed_at; }
+        }catch(e){}
+      }
+    }
+
+    const tier = tierCache.get(userId);
+    const tierLabel = tier === '3000' ? 'T3' : tier === '2000' ? 'T2' : tier === '1000' ? 'T1' : '—';
+    const msgs = (userMessageLog.get(userId) || []).slice(-30).reverse();
+    const totalCount = (userMessageLog.get(userId) || []).length;
+
+    let html = '<button class="uc-close" onclick="document.getElementById(\'userCardBackdrop\').classList.remove(\'open\')">✕</button>';
+    html += '<h3>' + escapeHtml(displayName) + '</h3>';
+    html += '<div class="uc-row">Account erstellt: ' + (createdAt ? new Date(createdAt).toLocaleDateString('de-DE') : 'unbekannt (nicht eingeloggt?)') + '</div>';
+    html += '<div class="uc-row">Folgt seit: ' + (followSince ? new Date(followSince).toLocaleDateString('de-DE') : 'nicht ermittelbar / folgt nicht') + '</div>';
+    html += '<div class="uc-row">Aktuelle Sub-Stufe: ' + tierLabel + '</div>';
+    html += '<div class="uc-row">Begrüßt in dieser Session: ' + (greetedUsers.has(userId) ? 'Ja' : 'Nein') + '</div>';
+    html += '<div class="uc-msglist"><b>Nachrichten seit Tool-Start (' + totalCount + '):</b>';
+    if(msgs.length){
+      msgs.forEach(m=>{
+        html += '<div>[' + new Date(m.t).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' }) + '] ' + escapeHtml(m.text) + '</div>';
+      });
+    } else {
+      html += '<div>Keine (noch keine Nachricht seit Öffnen des Tools gesehen)</div>';
+    }
+    html += '</div>';
+    html += '<div class="uc-row" style="margin-top:8px;font-style:italic;">Kein vollständiger Twitch-Chatverlauf — nur was das Tool seit dem Start selbst mitbekommen hat.</div>';
+    els.userCard.innerHTML = html;
+  }
+
   // ---------- Mod-Ansicht / Timeout-Tool ----------
   els.modViewBtn.onclick = ()=>{ els.modToolbar.classList.toggle('open'); };
   els.timeoutModeBtn.onclick = ()=>{
@@ -609,6 +692,7 @@
       'channel:read:subscriptions',
       'moderator:read:banned_users',
       'moderator:manage:banned_users',
+      'moderator:read:followers',
       'chat:read',
       'chat:edit'
     ].join(' ');
@@ -1043,7 +1127,7 @@
 
   function isGreetingMessage(msg){
     const clean = msg.toLowerCase().replace(/[.,!?;:()"'\/_\-]/g, ' ');
-    const words = clean.split(/\s+/).filter(Boolean).slice(0, 4);
+    const words = clean.split(/\s+/).filter(Boolean); // ganze Nachricht prüfen (Emote-Codes am Anfang sollen "abend" & Co. nicht rausschieben)
     const keywords = getGreetingKeywords();
     return words.some(w => keywords.some(k=>{
       if(k.length <= 2) return w === k; // ganz kurze Wörter (hi, na, jo, wb...) nur exakt, sonst zu viele Fehltreffer
@@ -1108,9 +1192,13 @@
     const nameSpan = document.createElement('span');
     nameSpan.className = 'display-name';
     nameSpan.style.color = color;
+    nameSpan.style.cursor = 'pointer';
+    nameSpan.title = 'Klicken für Infos zu dieser Person';
     nameSpan.textContent = displayName + ':';
+    nameSpan.onclick = (e)=>{ e.stopPropagation(); showUserCard(userId, displayName); };
     row.appendChild(nameSpan);
 
+    logUserMessage(userId, message);
     const msgSpan = document.createElement('span');
     msgSpan.className = 'message-text';
     msgSpan.innerHTML = ' ' + buildMessageHtml(message, emotes);
@@ -1144,6 +1232,8 @@
         el.onclick = ()=>{ if(timeoutModeActive) executeTimeout(el.dataset.userId, el.dataset.displayName || '', el); };
         const statusIconEl = el.querySelector('.status-icon');
         if(statusIconEl) statusIconEl.onclick = (e)=>{ e.stopPropagation(); toggleGreetedManually(el.dataset.userId); };
+        const nameEl = el.querySelector('.display-name');
+        if(nameEl) nameEl.onclick = (e)=>{ e.stopPropagation(); showUserCard(el.dataset.userId, el.dataset.displayName || ''); };
       }
       els.chat.appendChild(el);
       messageHistory.push(html);
