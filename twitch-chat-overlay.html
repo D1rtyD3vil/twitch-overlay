@@ -342,7 +342,7 @@
     let cfg = {};
     try{ cfg = JSON.parse(localStorage.getItem('ligaChatOverlayConfig') || '{}'); }catch(e){}
     els.channel.value = cfg.channel || DEFAULT_CHANNEL || 'd1rtyd3vil';
-    els.clientId.value = cfg.clientId || DEFAULT_CLIENT_ID || '0g3v1xmlmsukw61qn022cnufete06g';
+    els.clientId.value = cfg.clientId || DEFAULT_CLIENT_ID || '5495juzgyub7s2io3p42uog5s5mdf3';
     const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(cfg.greetings || [])]));
     els.greetings.value = merged.join(', ');
     clientId = els.clientId.value;
