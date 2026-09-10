@@ -228,7 +228,7 @@
 
   <div id="modToolbar">
     <span>⏱ Timeout:</span>
-    <input type="number" id="timeoutMinutes" min="1" value="10"> Min.
+    <input type="number" id="timeoutSeconds" min="1" step="1" value="600"> Sek.
     <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
     <span id="timeoutStatus"></span>
   </div>
@@ -372,7 +372,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v17 · 10.09.2026';
+  const OVERLAY_VERSION = 'v18 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -397,7 +397,7 @@
     colorScheme: document.getElementById('colorSchemeInput'),
     modViewBtn: document.getElementById('modViewBtn'),
     modToolbar: document.getElementById('modToolbar'),
-    timeoutMinutes: document.getElementById('timeoutMinutes'),
+    timeoutSeconds: document.getElementById('timeoutSeconds'),
     timeoutModeBtn: document.getElementById('timeoutModeBtn'),
     timeoutStatus: document.getElementById('timeoutStatus'),
     chatInputBar: document.getElementById('chatInputBar'),
@@ -525,9 +525,8 @@
       els.timeoutStatus.textContent = 'Nicht eingeloggt — kein Timeout möglich.';
       return;
     }
-    const minutes = Math.max(1, parseInt(els.timeoutMinutes.value, 10) || 10);
-    const duration = minutes * 60;
-    els.timeoutStatus.textContent = 'Timeoute ' + displayName + ' (' + minutes + ' Min.) ...';
+    const duration = Math.min(1209600, Math.max(1, parseInt(els.timeoutSeconds.value, 10) || 600)); // Twitch-Limit: max. 14 Tage
+    els.timeoutStatus.textContent = 'Timeoute ' + displayName + ' (' + duration + ' Sek.) ...';
     try{
       const res = await fetch('https://api.twitch.tv/helix/moderation/bans?broadcaster_id=' + broadcasterId + '&moderator_id=' + ownUserId, {
         method: 'POST',
@@ -539,7 +538,7 @@
         body: JSON.stringify({ data: { user_id: userId, duration: duration } })
       });
       if(res.ok){
-        els.timeoutStatus.textContent = '✓ ' + displayName + ' für ' + minutes + ' Min. getimeoutet.';
+        els.timeoutStatus.textContent = '✓ ' + displayName + ' für ' + duration + ' Sek. getimeoutet.';
         if(row) row.classList.add('timed-out');
       } else if(res.status === 401){
         handleAuthError();
