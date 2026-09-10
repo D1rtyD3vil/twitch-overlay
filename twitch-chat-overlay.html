@@ -182,6 +182,7 @@
   .role-broadcaster{ background: var(--heraldry-red); color:#f3d9c9; }
   .role-mod{ background:#3a5e2b; color:#e2f0d7; }
   .role-vip{ background:#6a3a1e; color:#f3ddc9; }
+  .role-founder{ background:#1e6a5c; color:#d6f5ed; }
 
   .tier-badge{ color:#1b1712; }
   .tier-1{ background: var(--bronze); }
@@ -405,7 +406,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v30 · 10.09.2026';
+  const OVERLAY_VERSION = 'v31 · 10.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1203,7 +1204,7 @@
   }
 
   function renderMessage({ displayName, userId, color, badges, message, emotes }){
-    const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber');
+    const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber') || Object.prototype.hasOwnProperty.call(badges, 'founder');
     const greeting = isGreetingMessage(message);
     const alreadyGreeted = greetedUsers.has(userId);
     let firstGreeting = false;
@@ -1239,6 +1240,11 @@
       const b = document.createElement('span');
       b.className = 'role-badge role-vip'; b.textContent = 'VIP';
       row.appendChild(b);
+    }
+    if(badges.founder){
+      const fb = document.createElement('span');
+      fb.className = 'role-badge role-founder'; fb.textContent = 'GR';
+      row.appendChild(fb);
     }
 
     if(isSub){
