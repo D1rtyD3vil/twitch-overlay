@@ -5,13 +5,14 @@
 <title>Liga Chat Overlay</title>
 <style>
   :root{
-    /* Stream-Look: Schwarz / Rot / Neon-Orange (Dirty Devil) */
+    /* Stream-Look: Schwarz / Rot / Neon-Orange (Dirty Devil) — Standard, per Farbschema-Auswahl änderbar */
     --ink:#0b0909;
     --panel: rgba(26,10,10,0.78);
     --panel-solid:#190d0d;
     --parchment:#f2ece2;
     --parchment-dim:#b89a8a;
     --gold:#ff8a1f;
+    --gold-rgb:255,138,31;
     --bronze:#b08d57;
     --silver:#c9c9c9;
     --gold-tier:#f2b33d;
@@ -79,6 +80,32 @@
   #settingsPanel .row{ display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
   #settingsPanel small{ color:var(--parchment-dim); line-height:1.4; }
   #settingsPanel a{ color:var(--gold); }
+  #settingsPanel select{
+    background:#12100c; color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:5px 7px; font-size:12px; font-family:inherit;
+  }
+
+  #modToolbar{
+    display:none;
+    align-items:center; gap:10px; flex-wrap:wrap;
+    padding:8px 10px;
+    background: var(--heraldry-red);
+    border-bottom:1px solid var(--border);
+    font-size:12px;
+  }
+  #modToolbar.open{ display:flex; }
+  #modToolbar input[type=number]{
+    width:56px; background:#12100c; color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px; padding:4px 6px; font-size:12px;
+  }
+  #modToolbar button{
+    background: var(--ink); color: var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:4px 8px; cursor:pointer; font-size:12px;
+  }
+  #modToolbar button.active{ background: var(--gold); color:#1a0f00; font-weight:700; }
+  #timeoutStatus{ opacity:0.9; font-style:italic; }
 
   /* ---------- Chat ---------- */
   #chat{
@@ -104,10 +131,15 @@
     animation: glow-pulse 3.4s ease-out 1;
   }
   @keyframes glow-pulse{
-    0%   { box-shadow: 0 0 0 0 rgba(255,90,30,0);   background-color: rgba(255,90,30,0.40); }
-    45%  { box-shadow: 0 0 16px 3px rgba(255,90,30,0.55); background-color: rgba(255,90,30,0.24); }
-    100% { box-shadow: 0 0 0 0 rgba(255,90,30,0);   background-color: rgba(26,10,10,0.78); }
+    0%   { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0);   background-color: rgba(var(--gold-rgb),0.40); }
+    45%  { box-shadow: 0 0 16px 3px rgba(var(--gold-rgb),0.55); background-color: rgba(var(--gold-rgb),0.24); }
+    100% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0);   background-color: var(--panel); }
   }
+
+  .chat-row.timeout-armed{ cursor:pointer; }
+  .chat-row.timeout-armed:hover{ outline:2px solid var(--red); outline-offset:-2px; }
+  .chat-row.timed-out{ opacity:0.45; }
+  .chat-row.timed-out .message-text{ text-decoration: line-through; }
 
   .status-icon{ flex:0 0 auto; width:15px; height:15px; display:inline-flex; }
   .status-icon svg{ width:15px; height:15px; }
@@ -153,6 +185,14 @@
     <span id="tierStatus">Sub-Tier: aus</span>
     <button id="toggleSettings">⚙ Einstellungen</button>
     <button id="resetSessionBtn" title="Setzt die Liste der bereits Begrüßten zurück (z.B. zu Sende-Beginn)">Neue Session</button>
+    <button id="modViewBtn" style="display:none">🛡 Mod-Ansicht</button>
+  </div>
+
+  <div id="modToolbar">
+    <span>⏱ Timeout:</span>
+    <input type="number" id="timeoutMinutes" min="1" value="10"> Min.
+    <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
+    <span id="timeoutStatus"></span>
   </div>
 
   <div id="settingsPanel">
@@ -164,19 +204,32 @@
     </div>
 
     <div class="row">
-      <label style="flex:1;min-width:220px">Twitch Client-ID (für echte T1/T2/T3-Anzeige)
+      <label style="flex:1;min-width:220px">Twitch Client-ID (für echte T1/T2/T3-Anzeige + Mod-Tools)
         <input id="clientIdInput" placeholder="Client-ID aus dev.twitch.tv/console">
       </label>
       <button id="loginBtn">Mit Twitch verbinden (Login)</button>
     </div>
     <small>
-      Ohne Login wird bei Abos nur ein neutrales „Sub"-Badge angezeigt (Twitch verrät die Stufe nicht öffentlich im Chat).
-      Für echte T1/T2/T3-Badges brauchst du einmalig eine eigene Twitch-App:
+      Ohne Login wird bei Abos nur ein neutrales „Sub"-Badge angezeigt, und Mod-Tools sind nicht verfügbar.
+      Für echte T1/T2/T3-Badges und die Mod-Ansicht (Timeout-Tool) brauchst du einmalig eine eigene Twitch-App:
       <a href="https://dev.twitch.tv/console/apps" target="_blank">dev.twitch.tv/console/apps</a> →
       neue App anlegen → als „OAuth Redirect URL" <b>genau die Adresse eintragen, unter der diese Datei später erreichbar ist</b>
       (z.B. eine GitHub-Pages-URL oder <code>http://localhost:PORT/...</code>, wenn du sie lokal per kleinem Webserver öffnest —
       ein reines <code>file://</code> funktioniert bei Twitch-Login nicht). Die Client-ID hier eintragen, dann auf „Mit Twitch verbinden" klicken.
+      Mods loggen sich mit demselben Link und derselben Client-ID einfach mit ihrem eigenen Twitch-Account ein — die Client-ID ist kein Geheimnis,
+      die kann jeder benutzen, der den Link hat.
     </small>
+
+    <div class="row">
+      <label>Farbschema
+        <select id="colorSchemeInput">
+          <option value="schwarz-rot">Schwarz / Rot</option>
+          <option value="rot-schwarz">Rot / Schwarz</option>
+          <option value="schwarz-orange">Schwarz / Orange</option>
+          <option value="orange-schwarz">Orange / Schwarz</option>
+        </select>
+      </label>
+    </div>
 
     <div class="row">
       <label style="flex:1">Begrüßungs-Wörter (kommagetrennt, gelten als „hat begrüßt")
@@ -200,6 +253,39 @@
 (function(){
   const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"></polyline></svg>';
   const CROSS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg>';
+
+  // Hier einmalig eintragen, bevor du die Datei hochlädst: dann müssen Mods
+  // NUR NOCH auf "Mit Twitch verbinden" klicken — Channel + Client-ID sind
+  // schon vorausgefüllt, kein Rumtippen für jeden Mod nötig.
+  const DEFAULT_CLIENT_ID = '';   // z.B. '5495juzgyub7s2io3p42uog5s5mdf3'
+  const DEFAULT_CHANNEL   = '';   // z.B. 'd1rtyd3vil'
+
+  const COLOR_SCHEMES = {
+    'schwarz-rot': {
+      label:'Schwarz / Rot',
+      ink:'#0b0909', panelSolid:'#190d0d', panel:'rgba(26,10,10,0.78)', border:'#3a1414',
+      gold:'#e8432f', goldRgb:'232,67,47', goldTier:'#ff6a4a', heraldryRed:'#8f1d1d',
+      parchment:'#f2ece2', parchmentDim:'#b89a8a'
+    },
+    'rot-schwarz': {
+      label:'Rot / Schwarz',
+      ink:'#2b0a0a', panelSolid:'#3d0f0f', panel:'rgba(61,15,15,0.82)', border:'#180505',
+      gold:'#ff8a3d', goldRgb:'255,138,61', goldTier:'#ffb14d', heraldryRed:'#140505',
+      parchment:'#f6ece0', parchmentDim:'#d9a68f'
+    },
+    'schwarz-orange': {
+      label:'Schwarz / Orange',
+      ink:'#0b0909', panelSolid:'#190d0d', panel:'rgba(26,10,10,0.78)', border:'#3a1414',
+      gold:'#ff8a1f', goldRgb:'255,138,31', goldTier:'#f2b33d', heraldryRed:'#b81f1f',
+      parchment:'#f2ece2', parchmentDim:'#b89a8a'
+    },
+    'orange-schwarz': {
+      label:'Orange / Schwarz',
+      ink:'#331a06', panelSolid:'#43220a', panel:'rgba(67,34,10,0.82)', border:'#1c0e02',
+      gold:'#ffcf7a', goldRgb:'255,207,122', goldTier:'#ffe0a0', heraldryRed:'#140a03',
+      parchment:'#fbe9cf', parchmentDim:'#d9b98a'
+    }
+  };
 
   const DEFAULT_GREETINGS = [
     'moin','moinsen','moinmoin','moinsn','hi','hii','hiho','hey','heyho','heyhey',
@@ -229,11 +315,21 @@
     tierStatus: document.getElementById('tierStatus'),
     chat: document.getElementById('chat'),
     emptyHint: document.getElementById('emptyHint'),
+    colorScheme: document.getElementById('colorSchemeInput'),
+    modViewBtn: document.getElementById('modViewBtn'),
+    modToolbar: document.getElementById('modToolbar'),
+    timeoutMinutes: document.getElementById('timeoutMinutes'),
+    timeoutModeBtn: document.getElementById('timeoutModeBtn'),
+    timeoutStatus: document.getElementById('timeoutStatus'),
   };
 
   let ws = null;
   let accessToken = null;
-  let broadcasterId = null;
+  let broadcasterId = null;   // ID des Twitch-Kanals (nicht zwingend der eingeloggte Nutzer)
+  let ownUserId = null;       // ID des eingeloggten Nutzers (Streamer oder Mod)
+  let ownLogin = null;
+  let isMod = false;
+  let timeoutModeActive = false;
   let clientId = '';
   const tierCache = new Map();      // userId -> '1000' | '2000' | '3000' | null
   const pendingLookups = new Set();
@@ -245,11 +341,13 @@
   function loadConfig(){
     let cfg = {};
     try{ cfg = JSON.parse(localStorage.getItem('ligaChatOverlayConfig') || '{}'); }catch(e){}
-    els.channel.value = cfg.channel || '';
-    els.clientId.value = cfg.clientId || '';
+    els.channel.value = cfg.channel || DEFAULT_CHANNEL || 'd1rtyd3vil';
+    els.clientId.value = cfg.clientId || DEFAULT_CLIENT_ID || '0g3v1xmlmsukw61qn022cnufete06g';
     const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(cfg.greetings || [])]));
     els.greetings.value = merged.join(', ');
-    clientId = cfg.clientId || '';
+    clientId = els.clientId.value;
+    els.colorScheme.value = cfg.colorScheme && COLOR_SCHEMES[cfg.colorScheme] ? cfg.colorScheme : 'schwarz-rot';
+    applyColorScheme(els.colorScheme.value);
     try{
       const saved = JSON.parse(localStorage.getItem('ligaChatOverlayGreeted') || '[]');
       greetedUsers = new Set(saved);
@@ -261,10 +359,27 @@
       channel: els.channel.value.trim(),
       clientId: els.clientId.value.trim(),
       greetings: getGreetingKeywords(),
+      colorScheme: els.colorScheme.value,
     };
     localStorage.setItem('ligaChatOverlayConfig', JSON.stringify(cfg));
     clientId = cfg.clientId;
   }
+  function applyColorScheme(name){
+    const s = COLOR_SCHEMES[name];
+    if(!s) return;
+    const root = document.documentElement.style;
+    root.setProperty('--ink', s.ink);
+    root.setProperty('--panel', s.panel);
+    root.setProperty('--panel-solid', s.panelSolid);
+    root.setProperty('--parchment', s.parchment);
+    root.setProperty('--parchment-dim', s.parchmentDim);
+    root.setProperty('--gold', s.gold);
+    root.setProperty('--gold-rgb', s.goldRgb);
+    root.setProperty('--gold-tier', s.goldTier);
+    root.setProperty('--heraldry-red', s.heraldryRed);
+    root.setProperty('--border', s.border);
+  }
+  els.colorScheme.onchange = ()=>{ applyColorScheme(els.colorScheme.value); saveConfig(); };
   function persistGreeted(){
     localStorage.setItem('ligaChatOverlayGreeted', JSON.stringify(Array.from(greetedUsers)));
   }
@@ -290,6 +405,48 @@
     }
   };
 
+  // ---------- Mod-Ansicht / Timeout-Tool ----------
+  els.modViewBtn.onclick = ()=>{ els.modToolbar.classList.toggle('open'); };
+  els.timeoutModeBtn.onclick = ()=>{
+    timeoutModeActive = !timeoutModeActive;
+    els.timeoutModeBtn.textContent = 'Timeout-Modus: ' + (timeoutModeActive ? 'AN' : 'AUS');
+    els.timeoutModeBtn.classList.toggle('active', timeoutModeActive);
+    document.querySelectorAll('.chat-row').forEach(r => r.classList.toggle('timeout-armed', timeoutModeActive));
+    els.timeoutStatus.textContent = timeoutModeActive ? 'Klick auf eine Chat-Zeile zum Timeouten.' : '';
+  };
+
+  async function executeTimeout(userId, displayName, row){
+    if(!accessToken || !broadcasterId || !ownUserId){
+      els.timeoutStatus.textContent = 'Nicht eingeloggt — kein Timeout möglich.';
+      return;
+    }
+    const minutes = Math.max(1, parseInt(els.timeoutMinutes.value, 10) || 10);
+    const duration = minutes * 60;
+    els.timeoutStatus.textContent = 'Timeoute ' + displayName + ' (' + minutes + ' Min.) ...';
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/moderation/bans?broadcaster_id=' + broadcasterId + '&moderator_id=' + ownUserId, {
+        method: 'POST',
+        headers: {
+          'Client-Id': clientId,
+          'Authorization': 'Bearer ' + accessToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ data: { user_id: userId, duration: duration } })
+      });
+      if(res.ok){
+        els.timeoutStatus.textContent = '✓ ' + displayName + ' für ' + minutes + ' Min. getimeoutet.';
+        if(row) row.classList.add('timed-out');
+      } else if(res.status === 401){
+        handleAuthError();
+      } else {
+        const errBody = await res.json().catch(()=>({}));
+        els.timeoutStatus.textContent = '✕ Fehler bei ' + displayName + ': ' + (errBody.message || res.status);
+      }
+    }catch(e){
+      els.timeoutStatus.textContent = '✕ Netzwerkfehler beim Timeout von ' + displayName + '.';
+    }
+  }
+
   function setConnStatus(on){
     els.statusDot.classList.toggle('on', on);
     els.connLabel.textContent = on ? 'verbunden' : 'nicht verbunden';
@@ -302,11 +459,16 @@
     if(!cid){ alert('Bitte zuerst eine Client-ID eintragen.'); return; }
     saveConfig();
     const redirectUri = window.location.origin + window.location.pathname;
+    const scopes = [
+      'channel:read:subscriptions',
+      'moderator:read:banned_users',
+      'moderator:manage:banned_users'
+    ].join(' ');
     const url = 'https://id.twitch.tv/oauth2/authorize'
       + '?client_id=' + encodeURIComponent(cid)
       + '&redirect_uri=' + encodeURIComponent(redirectUri)
       + '&response_type=token'
-      + '&scope=' + encodeURIComponent('channel:read:subscriptions');
+      + '&scope=' + encodeURIComponent(scopes);
     window.location.href = url;
   };
 
@@ -322,21 +484,43 @@
     }
   }
 
-  async function fetchBroadcasterId(){
+  async function fetchAccountInfo(){
     if(!accessToken || !clientId){ setTierStatus('aus'); return; }
+    const channel = els.channel.value.trim().toLowerCase();
     try{
-      const res = await fetch('https://api.twitch.tv/helix/users', {
+      // eigener Account (Streamer oder Mod, je nachdem wer sich einloggt)
+      const meRes = await fetch('https://api.twitch.tv/helix/users', {
         headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
       });
-      if(res.ok){
-        const data = await res.json();
-        broadcasterId = data.data[0].id;
-        setTierStatus('aktiv ✓');
-      } else if(res.status === 401){
-        handleAuthError();
-      } else {
-        setTierStatus('Fehler (' + res.status + ')');
+      if(meRes.status === 401){ handleAuthError(); return; }
+      if(!meRes.ok){ setTierStatus('Fehler (' + meRes.status + ')'); return; }
+      const meData = await meRes.json();
+      ownUserId = meData.data[0].id;
+      ownLogin = meData.data[0].login;
+
+      // ID des eingestellten Twitch-Channels (kann von der eigenen abweichen, wenn ein Mod eingeloggt ist)
+      let channelId = ownUserId;
+      if(channel && channel !== ownLogin){
+        const chRes = await fetch('https://api.twitch.tv/helix/users?login=' + encodeURIComponent(channel), {
+          headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+        });
+        if(chRes.ok){
+          const chData = await chRes.json();
+          if(chData.data && chData.data[0]) channelId = chData.data[0].id;
+        }
       }
+      broadcasterId = channelId;
+      setTierStatus('aktiv ✓');
+
+      // Mod-/Streamer-Check: nur Streamer + Mods dürfen die Banned-Users-Liste lesen
+      isMod = (ownUserId === broadcasterId);
+      if(!isMod){
+        const modRes = await fetch('https://api.twitch.tv/helix/moderation/banned?broadcaster_id=' + broadcasterId + '&first=1', {
+          headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+        });
+        isMod = modRes.ok;
+      }
+      els.modViewBtn.style.display = isMod ? '' : 'none';
     }catch(e){ setTierStatus('Fehler'); }
   }
 
@@ -479,8 +663,9 @@
     const greetedNow = greetedUsers.has(userId);
 
     const row = document.createElement('div');
-    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '');
+    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '');
     row.dataset.userId = userId;
+    row.onclick = ()=>{ if(timeoutModeActive) executeTimeout(userId, displayName, row); };
 
     const statusIcon = document.createElement('span');
     statusIcon.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
@@ -544,7 +729,7 @@
     document.body.classList.add('obs-transparent');
   }
   handleOAuthRedirect();
-  if(accessToken) fetchBroadcasterId(); else setTierStatus('aus');
+  if(accessToken) fetchAccountInfo(); else setTierStatus('aus');
   if(els.channel.value.trim()) connectIRC();
 })();
 </script>
