@@ -5,18 +5,20 @@
 <title>Liga Chat Overlay</title>
 <style>
   :root{
-    --ink:#1b1712;
-    --panel: rgba(23,19,14,0.72);
-    --panel-solid:#1f1a13;
-    --parchment:#ede4d3;
-    --parchment-dim:#c9bda3;
-    --gold:#c9a227;
+    /* Liga der Heftigkeiten: Holz-Braun / Gold-Orange / Rot */
+    --ink:#241609;
+    --panel: rgba(58,39,20,0.78);
+    --panel-solid:#3a2712;
+    --parchment:#f2e6c8;
+    --parchment-dim:#cbb287;
+    --gold:#d9901f;
     --bronze:#b08d57;
     --silver:#c9c9c9;
-    --gold-tier:#e0b83a;
+    --gold-tier:#e6a92f;
     --green:#5fae6b;
     --red:#c1554a;
-    --border:#3a2f22;
+    --heraldry-red:#8a2a1e;
+    --border:#5c3d1f;
   }
   html,body{
     margin:0; padding:0;
@@ -102,9 +104,9 @@
     animation: glow-pulse 3.4s ease-out 1;
   }
   @keyframes glow-pulse{
-    0%   { box-shadow: 0 0 0 0 rgba(201,162,39,0);   background-color: rgba(201,162,39,0.38); }
-    45%  { box-shadow: 0 0 16px 3px rgba(201,162,39,0.55); background-color: rgba(201,162,39,0.24); }
-    100% { box-shadow: 0 0 0 0 rgba(201,162,39,0);   background-color: rgba(23,19,14,0.72); }
+    0%   { box-shadow: 0 0 0 0 rgba(217,144,31,0);   background-color: rgba(217,144,31,0.40); }
+    45%  { box-shadow: 0 0 16px 3px rgba(217,144,31,0.55); background-color: rgba(217,144,31,0.25); }
+    100% { box-shadow: 0 0 0 0 rgba(217,144,31,0);   background-color: rgba(58,39,20,0.78); }
   }
 
   .status-icon{ flex:0 0 auto; width:15px; height:15px; display:inline-flex; }
@@ -120,9 +122,9 @@
     border-radius:3px;
     line-height:1.5;
   }
-  .role-broadcaster{ background:#7a2b2b; color:#f3d9c9; }
-  .role-mod{ background:#2b5e3a; color:#d7f0dd; }
-  .role-vip{ background:#7a2b6a; color:#f3d3ec; }
+  .role-broadcaster{ background: var(--heraldry-red); color:#f3d9c9; }
+  .role-mod{ background:#3a5e2b; color:#e2f0d7; }
+  .role-vip{ background:#6a3a1e; color:#f3ddc9; }
 
   .tier-badge{ color:#1b1712; }
   .tier-1{ background: var(--bronze); }
@@ -200,8 +202,13 @@
   const CROSS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg>';
 
   const DEFAULT_GREETINGS = [
-    'moin','moinsen','hi','hey','hallo','servus','yo','sup','tach','tachchen',
-    'huhu','hoi','ahoi','abend','n\'abend','nabend','morgen','gutenmorgen','gutenabend'
+    'moin','moinsen','moinmoin','moinsn','hi','hii','hiho','hey','heyho','heyhey',
+    'hallo','hallöchen','hallochen','servus','sers','seas','servas',
+    'yo','yoyo','sup','wusup','tach','tachchen','tachtach',
+    'huhu','hoi','ahoi','ahoy','n7','o7',
+    'abend','nabend','gutenabend','morgen','gutenmorgen','tag','gutentag',
+    'grüezi','gruezi','grüßgott','gruessgott','salve','ola','hola',
+    'jo','joa','wb','welcomeback'
   ];
 
   const els = {
@@ -240,7 +247,8 @@
     try{ cfg = JSON.parse(localStorage.getItem('ligaChatOverlayConfig') || '{}'); }catch(e){}
     els.channel.value = cfg.channel || '';
     els.clientId.value = cfg.clientId || '';
-    els.greetings.value = (cfg.greetings && cfg.greetings.length ? cfg.greetings : DEFAULT_GREETINGS).join(', ');
+    const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(cfg.greetings || [])]));
+    els.greetings.value = merged.join(', ');
     clientId = cfg.clientId || '';
     try{
       const saved = JSON.parse(localStorage.getItem('ligaChatOverlayGreeted') || '[]');
@@ -452,7 +460,7 @@
   }
 
   function isGreetingMessage(msg){
-    const clean = msg.toLowerCase().replace(/[.,!?;:()"']/g, '');
+    const clean = msg.toLowerCase().replace(/[.,!?;:()"'\/_\-]/g, ' ');
     const words = clean.split(/\s+/).filter(Boolean).slice(0, 4);
     const keywords = getGreetingKeywords();
     return words.some(w => keywords.includes(w));
