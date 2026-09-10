@@ -405,7 +405,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v36 · 11.09.2026';
+  const OVERLAY_VERSION = 'v37 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -581,9 +581,6 @@
   els.resetAllBtn.onclick = ()=>{
     if(confirm('Begrüßungs-Session bei DIR UND allen anderen mit offenem Tool (z.B. Mods) zurücksetzen?')){
       resetGreetingsForAll();
-      if(ws && ws.readyState === 1 && els.channel.value.trim()){
-        ws.send('PRIVMSG #' + els.channel.value.trim().toLowerCase() + ' :' + GREETING_RESET_COMMAND);
-      }
     }
   };
   function resetGreetings(){
