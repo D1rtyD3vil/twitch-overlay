@@ -510,7 +510,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v50 · 11.09.2026';
+  const OVERLAY_VERSION = 'v51 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -660,7 +660,7 @@
           hasReplayedHistory = true;
           (msg.history || []).forEach(item=>{
             if(item.t === 'chat') renderMessage(item, { isReplay: true });
-            else if(item.t === 'modchat') renderModChatMessage(item.from, item.text);
+            else if(item.t === 'modchat') renderModChatMessage(item.from, item.text, { isReplay: true });
           });
           (msg.eventHistory || []).forEach(item=>{
             addEventEntry(item.text, item.ts);
@@ -1096,7 +1096,8 @@
     if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
   });
 
-  function renderModChatMessage(from, text){
+  function renderModChatMessage(from, text, opts){
+    opts = opts || {};
     const row = document.createElement('div');
     row.className = 'modchat-row';
     const tag = document.createElement('span');
@@ -1113,9 +1114,11 @@
     if(wasNearBottom) els.chat.scrollTop = els.chat.scrollHeight;
     trimOldMessages();
 
-    messageHistory.push(row.outerHTML);
-    if(messageHistory.length > MAX_ROWS) messageHistory.shift();
-    persistHistory();
+    if(!opts.isReplay){
+      messageHistory.push(row.outerHTML);
+      if(messageHistory.length > MAX_ROWS) messageHistory.shift();
+      persistHistory();
+    }
   }
 
   // ---------- Stream-Vorschau (einblendbar, per Ziehen an der Unterkante skalierbar) ----------
@@ -1711,9 +1714,11 @@
     if(wasNearBottom) els.chat.scrollTop = els.chat.scrollHeight;
     trimOldMessages();
 
-    messageHistory.push(row.outerHTML);
-    if(messageHistory.length > MAX_ROWS) messageHistory.shift();
-    persistHistory();
+    if(!opts.isReplay){
+      messageHistory.push(row.outerHTML);
+      if(messageHistory.length > MAX_ROWS) messageHistory.shift();
+      persistHistory();
+    }
 
     // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
     // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
