@@ -215,16 +215,7 @@
   }
   .reply-preview-clickable{ cursor:pointer; text-decoration:underline dotted; }
   .reply-preview-clickable:hover{ color:var(--gold); opacity:1; }
-  .reply-btn{
-    position:absolute; right:4px; top:50%; transform:translateY(-50%);
-    background:none; border:none; cursor:pointer;
-    color:var(--parchment-dim); font-size:15px;
-    padding:2px 4px; opacity:0; transition:opacity 0.15s;
-    z-index:2;
-  }
-  .chat-row:hover .reply-btn{ opacity:1; }
-  .reply-btn:hover{ color:var(--gold); }
-  .reply-btn:disabled{ display:none; }
+  .chat-row{ cursor:pointer; }
   @keyframes reply-flash{
     0%   { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0); }
     30%  { box-shadow: 0 0 0 3px rgba(var(--gold-rgb),0.6); }
@@ -812,7 +803,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v98 · 11.09.2026';
+  const OVERLAY_VERSION = 'v99 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -2474,7 +2465,8 @@
     row.dataset.messageText = message;
     if(messageId) row.dataset.messageId = messageId;
     row.onclick = ()=>{
-      if(timeoutModeActive) executeTimeout(userId, displayName, row);
+      if(timeoutModeActive){ executeTimeout(userId, displayName, row); return; }
+      if(messageId) setReplyTarget(messageId, displayName, message);
     };
 
     if(replyTo){
@@ -2496,22 +2488,6 @@
       }
       row.appendChild(replyLine);
     }
-
-    const replyBtn = document.createElement('button');
-    replyBtn.className = 'reply-btn';
-    replyBtn.type = 'button';
-    replyBtn.title = 'Auf diese Nachricht antworten';
-    replyBtn.textContent = '↩';
-    if(!messageId){
-      replyBtn.disabled = true;
-      replyBtn.title = 'Antworten hier nicht möglich (keine Nachrichten-ID)';
-    } else {
-      replyBtn.onclick = (e)=>{
-        e.stopPropagation();
-        setReplyTarget(messageId, displayName, message);
-      };
-    }
-    row.appendChild(replyBtn);
 
     const statusIcon = document.createElement('span');
     statusIcon.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
