@@ -559,6 +559,13 @@
     </div>
 
     <div class="row">
+      <label style="flex-direction:row; align-items:center; gap:6px;">
+        <input type="checkbox" id="showModsOnlyChannelInput" style="width:auto;" checked>
+        🤫 "Nur Mods"-Kanal bei mir anzeigen
+      </label>
+    </div>
+
+    <div class="row">
       <label>Farbschema
         <select id="colorSchemeInput">
           <option value="schwarz-rot">Schwarz / Rot</option>
@@ -741,7 +748,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v79 · 11.09.2026';
+  const OVERLAY_VERSION = 'v80 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -763,6 +770,7 @@
     emptyHint: document.getElementById('emptyHint'),
     colorScheme: document.getElementById('colorSchemeInput'),
     resetOnStreamStart: document.getElementById('resetOnStreamStartInput'),
+    showModsOnlyChannel: document.getElementById('showModsOnlyChannelInput'),
     streamPosition: document.getElementById('streamPositionInput'),
     eventPosition: document.getElementById('eventPositionInput'),
     stream169Btn: document.getElementById('stream169Btn'),
@@ -836,6 +844,7 @@
       greetedUsers = new Map(Array.isArray(saved) ? saved.map(entry => Array.isArray(entry) ? entry : [entry, Date.now()]) : []);
     }catch(e){ greetedUsers = new Map(); }
     els.resetOnStreamStart.checked = !!cfg.resetOnStreamStart;
+    els.showModsOnlyChannel.checked = cfg.showModsOnlyChannel === undefined ? true : !!cfg.showModsOnlyChannel;
     els.streamPosition.value = cfg.streamPosition || 'top';
     els.eventPosition.value = cfg.eventPosition || 'left';
     accessToken = localStorage.getItem('ligaChatOverlayToken') || null;
@@ -848,6 +857,7 @@
       blockedBots: getBlockedBots(),
       colorScheme: els.colorScheme.value,
       resetOnStreamStart: els.resetOnStreamStart.checked,
+      showModsOnlyChannel: els.showModsOnlyChannel.checked,
       streamPosition: els.streamPosition.value,
       eventPosition: els.eventPosition.value,
     };
@@ -872,6 +882,7 @@
   }
   els.colorScheme.onchange = ()=>{ applyColorScheme(els.colorScheme.value); saveConfig(); };
   els.resetOnStreamStart.onchange = ()=>{ saveConfig(); };
+  els.showModsOnlyChannel.onchange = ()=>{ saveConfig(); };
   function persistGreeted(){
     localStorage.setItem('ligaChatOverlayGreeted', JSON.stringify(Array.from(greetedUsers.entries())));
   }
@@ -943,9 +954,11 @@
       } else if(msg.type === 'automodResolved'){
         removeAutomodHold(msg.id);
       } else if(msg.type === 'modChatMessage'){
+        if(msg.scope === 'mods' && !els.showModsOnlyChannel.checked) return;
         renderModChatMessage(msg.from, msg.text, { scope: msg.scope });
       } else if(msg.type === 'modChatHistoryState'){
         (msg.items || []).forEach(item=>{
+          if(item.scope === 'mods' && !els.showModsOnlyChannel.checked) return;
           renderModChatMessage(item.from, item.text, { scope: item.scope, isReplay: true });
         });
       } else if(msg.type === 'followEvent'){
@@ -998,8 +1011,8 @@
     updateChatModeOptions();
   }
   function updateChatModeOptions(){
-    const modsOnlyOption = els.chatModeSelect.querySelector('option[value="modsOnly"]');
-    if(modsOnlyOption) modsOnlyOption.style.display = (ownUserId === broadcasterId) ? 'none' : '';
+    // Alle (auch der Streamer) sehen jetzt beide Mod-Chat-Optionen; Sichtbarkeit des "nur Mods"-Kanals
+    // wird über das eigene Häkchen in den Einstellungen gesteuert, nicht mehr technisch verweigert.
   }
   connectSyncServer();
 
@@ -1468,6 +1481,18 @@
     els.emotePreviewBar.classList.add('visible');
   }
 
+  function buildModChatMessageHtml(text){
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return text.split(/(\s+)/).map(tok=>{
+      if(/^\s*$/.test(tok)) return tok;
+      const emote = (channelEmotes || []).find(e => e.name === tok);
+      if(emote){
+        return '<img class="chat-emote" src="' + emote.url + '" alt="' + esc(tok) + '" title="' + esc(tok) + '">';
+      }
+      return esc(tok);
+    }).join('');
+  }
+
   function renderModChatMessage(from, text, opts){
     opts = opts || {};
     const row = document.createElement('div');
@@ -1478,7 +1503,7 @@
     row.appendChild(tag);
     const textEl = document.createElement('span');
     textEl.className = 'mc-text';
-    textEl.textContent = text;
+    textEl.innerHTML = buildModChatMessageHtml(text);
     row.appendChild(textEl);
 
     const wasNearBottom = isNearBottom();
