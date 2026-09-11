@@ -79,6 +79,16 @@
   #settingsPanel textarea{ resize:vertical; min-height:44px; }
   #settingsPanel .row{ display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
   #settingsPanel small{ color:var(--parchment-dim); line-height:1.4; }
+  #settingsPanel details{
+    border:1px solid var(--border); border-radius:4px;
+    padding:6px 8px; background:#12100c;
+  }
+  #settingsPanel details[open]{ padding-bottom:10px; }
+  #settingsPanel summary{
+    cursor:pointer; color:var(--gold); font-size:12px; font-weight:600;
+    outline:none;
+  }
+  #settingsPanel details .row{ margin-top:8px; }
   #settingsPanel a{ color:var(--gold); }
   #settingsPanel select{
     background:#12100c; color:var(--parchment);
@@ -259,7 +269,7 @@
 
   #streamContainer{
     display:none;
-    resize: vertical;
+    position:relative;
     overflow:hidden;
     height:300px;
     min-height:120px;
@@ -269,6 +279,33 @@
   }
   #streamContainer.open{ display:block; }
   #streamContainer iframe{ width:100%; height:100%; border:none; display:block; }
+  #streamResizeHandle{
+    position:absolute; left:0; right:0; bottom:0; height:16px;
+    cursor: ns-resize;
+    display:flex; align-items:flex-end; justify-content:center;
+    background: transparent;
+    opacity:0;
+    transition: opacity 0.15s ease;
+    z-index:5;
+  }
+  #streamContainer:hover #streamResizeHandle,
+  #streamResizeHandle.dragging{ opacity:1; }
+  #streamResizeHandle::before{
+    content:'▾';
+    display:block;
+    width:36px; text-align:center;
+    line-height:14px; height:14px;
+    font-size:13px;
+    color:#fff;
+    background: rgba(var(--gold-rgb),0.6);
+    border-radius:4px 4px 0 0;
+  }
+  #streamResizeHandle.dragging::before{ background: rgba(var(--gold-rgb),0.9); }
+  #streamDragOverlay{
+    display:none;
+    position:fixed; inset:0; z-index:999; cursor:ns-resize;
+  }
+  #streamDragOverlay.active{ display:block; }
 
   #emptyHint{
     color: var(--parchment-dim);
@@ -331,7 +368,9 @@
 
   <div id="streamContainer">
     <iframe id="streamFrame" allowfullscreen></iframe>
+    <div id="streamResizeHandle"></div>
   </div>
+  <div id="streamDragOverlay"></div>
 
   <div id="modToolbar">
     <span>⏱ Timeout:</span>
@@ -384,16 +423,22 @@
       </label>
     </div>
 
-    <div class="row">
-      <label style="flex:1">Begrüßungs-Wörter (kommagetrennt, gelten als „hat begrüßt")
-        <textarea id="greetingsInput"></textarea>
-      </label>
-    </div>
-    <div class="row">
-      <label style="flex:1">Bots ausblenden (kommagetrennt, Twitch-Login-Name, Groß/Klein egal)
-        <textarea id="blockedBotsInput"></textarea>
-      </label>
-    </div>
+    <details id="advancedListsDetails">
+      <summary>Erweitert: Begrüßungs-Wörter &amp; ausgeblendete Bots</summary>
+      <div class="row">
+        <label style="flex:1">Begrüßungs-Wörter (kommagetrennt, gelten als „hat begrüßt")
+          <textarea id="greetingsInput"></textarea>
+        </label>
+      </div>
+      <div class="row">
+        <button id="syncGreetingsBtn" type="button" style="display:none">🔄 Diese Liste an alle senden (auch Server)</button>
+      </div>
+      <div class="row">
+        <label style="flex:1">Bots ausblenden (kommagetrennt, Twitch-Login-Name, Groß/Klein egal)
+          <textarea id="blockedBotsInput"></textarea>
+        </label>
+      </div>
+    </details>
     <div class="row">
       <button id="saveSettingsBtn">Speichern</button>
       <button id="obsModeBtn">OBS-Modus (Leiste ausblenden)</button>
@@ -510,12 +555,13 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v51 · 11.09.2026';
+  const OVERLAY_VERSION = 'v54 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
     clientId: document.getElementById('clientIdInput'),
     greetings: document.getElementById('greetingsInput'),
+    syncGreetingsBtn: document.getElementById('syncGreetingsBtn'),
     blockedBots: document.getElementById('blockedBotsInput'),
     connectBtn: document.getElementById('connectBtn'),
     loginBtn: document.getElementById('loginBtn'),
@@ -549,6 +595,8 @@
     eventPanel: document.getElementById('eventPanel'),
     streamContainer: document.getElementById('streamContainer'),
     streamFrame: document.getElementById('streamFrame'),
+    streamResizeHandle: document.getElementById('streamResizeHandle'),
+    streamDragOverlay: document.getElementById('streamDragOverlay'),
     userCardBackdrop: document.getElementById('userCardBackdrop'),
     streamStartBackdrop: document.getElementById('streamStartBackdrop'),
     streamStartCountdown: document.getElementById('streamStartCountdown'),
@@ -666,6 +714,11 @@
             addEventEntry(item.text, item.ts);
           });
         }
+        if(msg.greetingList && msg.greetingList.length){
+          applyGreetingListUpdate(msg.greetingList);
+        }
+      } else if(msg.type === 'greetingListUpdate'){
+        applyGreetingListUpdate(msg.words);
       } else if(msg.type === 'greetUpdate'){
         if(msg.greeted) greetedUsers.set(msg.userId, msg.ts || Date.now()); else greetedUsers.delete(msg.userId);
         persistGreeted();
@@ -746,6 +799,17 @@
   }
   function getBlockedBots(){
     return els.blockedBots.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  }
+  els.syncGreetingsBtn.onclick = ()=>{
+    saveConfig();
+    syncSend({ type: 'setGreetingList', words: getGreetingKeywords() });
+    els.syncGreetingsBtn.textContent = '✓ An alle gesendet!';
+    setTimeout(()=>{ els.syncGreetingsBtn.textContent = '🔄 Diese Liste an alle senden (auch Server)'; }, 2500);
+  };
+  function applyGreetingListUpdate(words){
+    const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(words || [])]));
+    els.greetings.value = merged.join(', ');
+    saveConfig();
   }
 
   // ---------- UI ----------
@@ -1036,6 +1100,7 @@
       els.modViewBtn.style.display = isMod ? '' : 'none';
       els.resetAllBtn.style.display = isMod ? '' : 'none';
       els.chatModeSelect.style.display = isMod ? '' : 'none';
+      els.syncGreetingsBtn.style.display = isMod ? '' : 'none';
       announceModStatus();
       updateChatInputVisibility();
 
@@ -1134,11 +1199,34 @@
     localStorage.setItem('ligaChatOverlayStreamOpen', open ? '1' : '0');
     if(open) loadStreamIframe(); else els.streamFrame.src = '';
   };
-  if(window.ResizeObserver){
-    new ResizeObserver(entries=>{
-      for(const e of entries){ localStorage.setItem('ligaChatOverlayStreamHeight', Math.round(e.contentRect.height) + 'px'); }
-    }).observe(els.streamContainer);
-  }
+
+  // Eigener Ziehgriff statt Browser-"resize" — sonst schluckt der eingebettete Player die Maus beim Ziehen
+  (function setupStreamResize(){
+    let dragging = false, startY = 0, startHeight = 0;
+    els.streamResizeHandle.addEventListener('mousedown', (e)=>{
+      dragging = true;
+      startY = e.clientY;
+      startHeight = els.streamContainer.getBoundingClientRect().height;
+      els.streamResizeHandle.classList.add('dragging');
+      els.streamDragOverlay.classList.add('active'); // fängt die Maus ab, damit der iframe sie nicht "schluckt"
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e)=>{
+      if(!dragging) return;
+      const delta = e.clientY - startY;
+      let newHeight = startHeight + delta;
+      newHeight = Math.max(120, Math.min(window.innerHeight * 0.9, newHeight));
+      els.streamContainer.style.height = newHeight + 'px';
+    });
+    document.addEventListener('mouseup', ()=>{
+      if(!dragging) return;
+      dragging = false;
+      els.streamResizeHandle.classList.remove('dragging');
+      els.streamDragOverlay.classList.remove('active');
+      localStorage.setItem('ligaChatOverlayStreamHeight', els.streamContainer.style.height);
+    });
+  })();
+
   const savedStreamHeight = localStorage.getItem('ligaChatOverlayStreamHeight');
   if(savedStreamHeight) els.streamContainer.style.height = savedStreamHeight;
   if(localStorage.getItem('ligaChatOverlayStreamOpen') === '1'){
@@ -1471,6 +1559,7 @@
       els.modViewBtn.style.display = isMod ? '' : 'none';
       els.resetAllBtn.style.display = isMod ? '' : 'none';
       els.chatModeSelect.style.display = isMod ? '' : 'none';
+      els.syncGreetingsBtn.style.display = isMod ? '' : 'none';
       announceModStatus();
     }
   }
