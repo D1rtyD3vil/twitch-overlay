@@ -442,7 +442,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v41 · 11.09.2026';
+  const OVERLAY_VERSION = 'v42 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -958,6 +958,10 @@
     els.chat.appendChild(row);
     if(wasNearBottom) els.chat.scrollTop = els.chat.scrollHeight;
     trimOldMessages();
+
+    messageHistory.push(row.outerHTML);
+    if(messageHistory.length > MAX_ROWS) messageHistory.shift();
+    persistHistory();
   }
 
   // ---------- Stream-Vorschau (einblendbar, per Ziehen an der Unterkante skalierbar) ----------
