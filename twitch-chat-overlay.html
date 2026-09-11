@@ -688,7 +688,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v63 · 11.09.2026';
+  const OVERLAY_VERSION = 'v66 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1291,7 +1291,7 @@
       const from = ownDisplayName || ownLogin;
       syncSend({ type: 'modChat', from: from, text: text });
       renderModChatMessage(from, text);
-      els.chatMessageInput.value = ''; updateEmotePreviewBubble();
+      els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
       return;
     }
 
@@ -1303,18 +1303,24 @@
     if(ownUserId === broadcasterId) badges.broadcaster = '1';
     else if(isMod) badges.moderator = '1';
     renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text });
-    els.chatMessageInput.value = ''; updateEmotePreviewBubble();
+    els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
   }
   els.sendChatBtn.onclick = sendChatMessage;
   els.chatMessageInput.addEventListener('keydown', (e)=>{
     if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
   });
-  els.chatMessageInput.addEventListener('input', updateEmotePreviewBubble);
+  els.chatMessageInput.addEventListener('input', ()=>{
+    updateEmotePreviewBubble();
+    localStorage.setItem('ligaChatOverlayDraft', els.chatMessageInput.value);
+  });
+  els.chatMessageInput.addEventListener('scroll', updateEmotePreviewBubble);
+  els.chatMessageInput.addEventListener('click', updateEmotePreviewBubble);
 
   const emoteMeasureSpan = document.createElement('span');
   emoteMeasureSpan.style.cssText = 'position:absolute; left:-9999px; top:-9999px; white-space:pre; font-size:13px; font-family:inherit;';
   document.body.appendChild(emoteMeasureSpan);
 
+  const renderedEmoteBubbles = new Map(); // Emote-Name -> vorhandenes Blasen-Element (wiederverwenden statt neu bauen -> kein GIF-Neustart)
   function updateEmotePreviewBubble(){
     const text = els.chatMessageInput.value;
     const wordRegex = /\S+/g;
@@ -1324,28 +1330,47 @@
       const emote = channelEmotes.find(e => e.name === m[0]);
       if(emote) matches.push({ emote, start: m.index, word: m[0] });
     }
-    els.emotePreviewBar.innerHTML = '';
     if(!matches.length){
       els.emotePreviewBar.classList.remove('visible');
+      els.emotePreviewBar.innerHTML = '';
+      renderedEmoteBubbles.clear();
       return;
     }
     const inputPaddingLeft = 8; // muss zu #chatInputBar input { padding: 6px 8px } passen
+    const inputLeftEdge = els.chatMessageInput.offsetLeft + inputPaddingLeft;
+    const inputRightEdge = els.chatMessageInput.offsetLeft + els.chatMessageInput.offsetWidth - inputPaddingLeft;
+    const currentNames = new Set();
     matches.forEach(match=>{
+      currentNames.add(match.emote.name);
       emoteMeasureSpan.textContent = text.substring(0, match.start);
       const preWidth = emoteMeasureSpan.offsetWidth;
       emoteMeasureSpan.textContent = match.word;
       const wordWidth = emoteMeasureSpan.offsetWidth;
-      const left = els.chatMessageInput.offsetLeft + inputPaddingLeft + preWidth + (wordWidth / 2);
+      // scrollLeft abziehen: wenn der Text länger als das Feld ist, scrollt das Feld intern nach links weg
+      const left = inputLeftEdge + preWidth - els.chatMessageInput.scrollLeft + (wordWidth / 2);
+      const visible = left >= inputLeftEdge && left <= inputRightEdge;
 
-      const bubble = document.createElement('div');
-      bubble.className = 'epb-bubble';
-      bubble.style.left = left + 'px';
-      const img = document.createElement('img');
-      img.src = match.emote.url;
-      img.alt = match.emote.name;
-      img.onerror = ()=>{ img.onerror = null; img.src = match.emote.staticUrl; };
-      bubble.appendChild(img);
-      els.emotePreviewBar.appendChild(bubble);
+      let bubble = renderedEmoteBubbles.get(match.emote.name);
+      if(!bubble){
+        bubble = document.createElement('div');
+        bubble.className = 'epb-bubble';
+        const img = document.createElement('img');
+        img.src = match.emote.url;
+        img.alt = match.emote.name;
+        img.onerror = ()=>{ img.onerror = null; img.src = match.emote.staticUrl; };
+        bubble.appendChild(img);
+        els.emotePreviewBar.appendChild(bubble);
+        renderedEmoteBubbles.set(match.emote.name, bubble);
+      }
+      bubble.style.left = left + 'px'; // nur Position aktualisieren, Bild bleibt dasselbe Element
+      bubble.style.display = visible ? '' : 'none'; // aus dem Feld rausgescrollte Wörter -> Blase ausblenden statt falsch schweben lassen
+    });
+    // Blasen für Emotes entfernen, die nicht mehr im Text stehen
+    renderedEmoteBubbles.forEach((bubble, name)=>{
+      if(!currentNames.has(name)){
+        bubble.remove();
+        renderedEmoteBubbles.delete(name);
+      }
     });
     els.emotePreviewBar.classList.add('visible');
   }
@@ -2229,6 +2254,8 @@
   loadConfig();
   applyLayout();
   restoreHistory();
+  const savedDraft = localStorage.getItem('ligaChatOverlayDraft');
+  if(savedDraft){ els.chatMessageInput.value = savedDraft; }
   if(localStorage.getItem('ligaChatOverlayTransparent') === '1'){
     document.body.classList.add('obs-transparent');
   }
