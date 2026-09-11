@@ -210,6 +210,24 @@
     border:none; color:var(--parchment); font-size:16px; line-height:1;
   }
 
+  #streamStartBackdrop{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:60;
+    align-items:center; justify-content:center;
+  }
+  #streamStartBackdrop.open{ display:flex; }
+  #streamStartPopup{
+    background:var(--panel-solid); border:2px solid var(--gold); border-radius:8px;
+    padding:20px; width:300px; max-width:85vw; text-align:center;
+    color:var(--parchment); font-size:15px;
+  }
+  #streamStartCountdown{ font-size:12px; color:var(--parchment-dim); }
+  #streamStartPopup button{
+    flex:1; padding:8px; border-radius:4px; border:none; cursor:pointer;
+    font-weight:700; font-size:13px;
+  }
+  #streamStartResetBtn{ background:var(--gold); color:#1a0f00; }
+  #streamStartCancelBtn{ background:var(--ink); color:var(--parchment); border:1px solid var(--border) !important; }
+
   .status-icon{ flex:0 0 auto; width:15px; height:15px; display:inline-flex; cursor:pointer; }
   .status-icon:hover{ opacity:0.7; }
   .status-icon svg{ width:15px; height:15px; }
@@ -349,6 +367,13 @@
     </small>
 
     <div class="row">
+      <label style="flex-direction:row; align-items:center; gap:6px;">
+        <input type="checkbox" id="resetOnStreamStartInput" style="width:auto;">
+        Begrüßungen zum Streamstart zurücksetzen?
+      </label>
+    </div>
+
+    <div class="row">
       <label>Farbschema
         <select id="colorSchemeInput">
           <option value="schwarz-rot">Schwarz / Rot</option>
@@ -394,6 +419,18 @@
 
   <div id="userCardBackdrop">
     <div id="userCard"></div>
+  </div>
+
+  <div id="streamStartBackdrop">
+    <div id="streamStartPopup">
+      <div>📺 Stream wurde gestartet!</div>
+      <div style="margin:8px 0;">Begrüßungen zurücksetzen?</div>
+      <div id="streamStartCountdown"></div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button id="streamStartResetBtn">Jetzt zurücksetzen</button>
+        <button id="streamStartCancelBtn">Nicht zurücksetzen</button>
+      </div>
+    </div>
   </div>
 
 </div>
@@ -473,7 +510,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v48 · 11.09.2026';
+  const OVERLAY_VERSION = 'v50 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -495,6 +532,7 @@
     chat: document.getElementById('chat'),
     emptyHint: document.getElementById('emptyHint'),
     colorScheme: document.getElementById('colorSchemeInput'),
+    resetOnStreamStart: document.getElementById('resetOnStreamStartInput'),
     modViewBtn: document.getElementById('modViewBtn'),
     modToolbar: document.getElementById('modToolbar'),
     timeoutSeconds: document.getElementById('timeoutSeconds'),
@@ -512,6 +550,10 @@
     streamContainer: document.getElementById('streamContainer'),
     streamFrame: document.getElementById('streamFrame'),
     userCardBackdrop: document.getElementById('userCardBackdrop'),
+    streamStartBackdrop: document.getElementById('streamStartBackdrop'),
+    streamStartCountdown: document.getElementById('streamStartCountdown'),
+    streamStartResetBtn: document.getElementById('streamStartResetBtn'),
+    streamStartCancelBtn: document.getElementById('streamStartCancelBtn'),
     userCard: document.getElementById('userCard'),
   };
 
@@ -528,7 +570,7 @@
   const tierCache = new Map();      // userId -> '1000' | '2000' | '3000' | null
   const pendingLookups = new Set();
   let batchTimer = null;
-  let greetedUsers = new Set();     // userId, die in dieser Session schon begrüßt haben
+  let greetedUsers = new Map();     // userId -> Zeitstempel (Date.now()), wann diese Person begrüßt hat
   let messageHistory = [];          // zuletzt angezeigte Chat-Zeilen (als HTML), fürs Wiederherstellen nach Neuladen
   const MAX_ROWS = 80;
 
@@ -547,8 +589,9 @@
     applyColorScheme(els.colorScheme.value);
     try{
       const saved = JSON.parse(localStorage.getItem('ligaChatOverlayGreeted') || '[]');
-      greetedUsers = new Set(saved);
-    }catch(e){ greetedUsers = new Set(); }
+      greetedUsers = new Map(Array.isArray(saved) ? saved.map(entry => Array.isArray(entry) ? entry : [entry, Date.now()]) : []);
+    }catch(e){ greetedUsers = new Map(); }
+    els.resetOnStreamStart.checked = !!cfg.resetOnStreamStart;
     accessToken = localStorage.getItem('ligaChatOverlayToken') || null;
   }
   function saveConfig(){
@@ -558,6 +601,7 @@
       greetings: getGreetingKeywords(),
       blockedBots: getBlockedBots(),
       colorScheme: els.colorScheme.value,
+      resetOnStreamStart: els.resetOnStreamStart.checked,
     };
     localStorage.setItem('ligaChatOverlayConfig', JSON.stringify(cfg));
     clientId = cfg.clientId;
@@ -578,13 +622,15 @@
     root.setProperty('--border', s.border);
   }
   els.colorScheme.onchange = ()=>{ applyColorScheme(els.colorScheme.value); saveConfig(); };
+  els.resetOnStreamStart.onchange = ()=>{ saveConfig(); };
   function persistGreeted(){
-    localStorage.setItem('ligaChatOverlayGreeted', JSON.stringify(Array.from(greetedUsers)));
+    localStorage.setItem('ligaChatOverlayGreeted', JSON.stringify(Array.from(greetedUsers.entries())));
   }
 
   // ---------- Sync-Server (teilt Begrüßungs-Liste & Sub-Tiers live mit allen offenen Tool-Fenstern) ----------
   const SYNC_SERVER_URL = 'wss://d1rtyoverlay.duckdns.org';
   let syncWs = null;
+  let hasReplayedHistory = false; // Chat-/Event-Verlauf nur beim allerersten Verbinden übernehmen, nicht bei jedem Reconnect
   function connectSyncServer(){
     try{ syncWs = new WebSocket(SYNC_SERVER_URL); }catch(e){ return; }
     syncWs.onopen = ()=>{ announceModStatus(); };
@@ -592,7 +638,11 @@
       let msg;
       try{ msg = JSON.parse(evt.data); }catch(e){ return; }
       if(msg.type === 'state'){
-        (msg.greeted || []).forEach(id => greetedUsers.add(id));
+        (msg.greeted || []).forEach(entry=>{
+          const id = Array.isArray(entry) ? entry[0] : entry;
+          const ts = Array.isArray(entry) ? entry[1] : Date.now();
+          if(!greetedUsers.has(id)) greetedUsers.set(id, ts);
+        });
         persistGreeted();
         document.querySelectorAll('.chat-row[data-user-id]').forEach(row=>{
           if(greetedUsers.has(row.dataset.userId)){
@@ -606,22 +656,25 @@
             updateRenderedTiers([id]);
           }
         });
-        (msg.history || []).forEach(item=>{
-          if(item.t === 'chat') renderMessage(item, { isReplay: true });
-          else if(item.t === 'modchat') renderModChatMessage(item.from, item.text);
-        });
-        (msg.eventHistory || []).forEach(item=>{
-          addEventEntry(item.text, item.ts);
-        });
+        if(!hasReplayedHistory){
+          hasReplayedHistory = true;
+          (msg.history || []).forEach(item=>{
+            if(item.t === 'chat') renderMessage(item, { isReplay: true });
+            else if(item.t === 'modchat') renderModChatMessage(item.from, item.text);
+          });
+          (msg.eventHistory || []).forEach(item=>{
+            addEventEntry(item.text, item.ts);
+          });
+        }
       } else if(msg.type === 'greetUpdate'){
-        if(msg.greeted) greetedUsers.add(msg.userId); else greetedUsers.delete(msg.userId);
+        if(msg.greeted) greetedUsers.set(msg.userId, msg.ts || Date.now()); else greetedUsers.delete(msg.userId);
         persistGreeted();
         document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(msg.userId) + '"] .status-icon').forEach(el=>{
           el.className = 'status-icon ' + (msg.greeted ? 'ok' : 'no');
           el.innerHTML = msg.greeted ? CHECK_SVG : CROSS_SVG;
         });
       } else if(msg.type === 'resetGreetings'){
-        greetedUsers = new Set();
+        greetedUsers = new Map();
         persistGreeted();
         document.querySelectorAll('.status-icon').forEach(el=>{
           el.className = 'status-icon no'; el.innerHTML = CROSS_SVG;
@@ -713,25 +766,84 @@
   };
   function resetGreetings(){
     // NUR lokal — wird absichtlich nicht an den Sync-Server gemeldet (das ist der "nur ich"-Reset)
-    greetedUsers = new Set();
+    greetedUsers = new Map();
     persistGreeted();
   }
   function resetGreetingsForAll(){
-    greetedUsers = new Set();
+    greetedUsers = new Map();
     persistGreeted();
     syncSend({ type: 'resetGreetings' });
   }
   function toggleGreetedManually(userId){
     if(greetedUsers.has(userId)) greetedUsers.delete(userId);
-    else greetedUsers.add(userId);
+    else greetedUsers.set(userId, Date.now());
     persistGreeted();
     const greetedNow = greetedUsers.has(userId);
-    syncSend({ type: greetedNow ? 'greet' : 'ungreet', userId: userId });
+    syncSend({ type: greetedNow ? 'greet' : 'ungreet', userId: userId, ts: greetedUsers.get(userId) });
     document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(userId) + '"] .status-icon').forEach(el=>{
       el.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
       el.innerHTML = greetedNow ? CHECK_SVG : CROSS_SVG;
     });
   }
+
+  // ---------- Streamstart-Erkennung + "Begrüßungen zurücksetzen?"-Popup ----------
+  function pruneGreetingsOlderThan(maxAgeMs){
+    const cutoff = Date.now() - maxAgeMs;
+    const toRemove = [];
+    greetedUsers.forEach((ts, id)=>{ if(ts < cutoff) toRemove.push(id); });
+    toRemove.forEach(id=>{
+      greetedUsers.delete(id);
+      syncSend({ type: 'ungreet', userId: id });
+      document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(id) + '"] .status-icon').forEach(el=>{
+        el.className = 'status-icon no';
+        el.innerHTML = CROSS_SVG;
+      });
+    });
+    persistGreeted();
+  }
+
+  let streamStartCountdownTimer = null;
+  let streamStartTimeoutHandle = null;
+  function openStreamStartPopup(){
+    els.streamStartBackdrop.classList.add('open');
+    let remaining = 60;
+    els.streamStartCountdown.textContent = 'Automatischer Reset in ' + remaining + ' Sek., falls du nichts machst...';
+    streamStartCountdownTimer = setInterval(()=>{
+      remaining--;
+      if(remaining > 0){
+        els.streamStartCountdown.textContent = 'Automatischer Reset in ' + remaining + ' Sek., falls du nichts machst...';
+      }
+    }, 1000);
+    streamStartTimeoutHandle = setTimeout(()=>{
+      closeStreamStartPopup();
+      pruneGreetingsOlderThan(60000);
+    }, 60000);
+  }
+  function closeStreamStartPopup(){
+    els.streamStartBackdrop.classList.remove('open');
+    if(streamStartCountdownTimer){ clearInterval(streamStartCountdownTimer); streamStartCountdownTimer = null; }
+    if(streamStartTimeoutHandle){ clearTimeout(streamStartTimeoutHandle); streamStartTimeoutHandle = null; }
+  }
+  els.streamStartResetBtn.onclick = ()=>{ closeStreamStartPopup(); pruneGreetingsOlderThan(60000); };
+  els.streamStartCancelBtn.onclick = ()=>{ closeStreamStartPopup(); };
+
+  let wasStreamLive = null; // null = noch unbekannt (erste Abfrage zählt nicht als "gerade gestartet")
+  async function pollStreamLiveStatus(){
+    if(!els.resetOnStreamStart.checked || !accessToken || !clientId || !broadcasterId || ownUserId !== broadcasterId) return;
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/streams?user_id=' + broadcasterId, {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(!res.ok) return;
+      const data = await res.json();
+      const isLive = !!(data.data && data.data.length);
+      if(wasStreamLive === false && isLive){
+        openStreamStartPopup();
+      }
+      wasStreamLive = isLive;
+    }catch(e){ /* nächster Versuch in 30s */ }
+  }
+  setInterval(pollStreamLiveStatus, 30000);
 
   // ---------- Personen-Infokarte ----------
   const userMessageLog = new Map(); // userId -> [{t, text}] — nur seit Tool-Start, kein voller Twitch-Verlauf
@@ -1527,9 +1639,10 @@
     const alreadyGreeted = greetedUsers.has(userId);
     let firstGreeting = false;
     if(greeting && !alreadyGreeted){
-      greetedUsers.add(userId);
+      const ts = Date.now();
+      greetedUsers.set(userId, ts);
       persistGreeted();
-      syncSend({ type: 'greet', userId: userId });
+      syncSend({ type: 'greet', userId: userId, ts: ts });
       firstGreeting = true;
     }
     const greetedNow = greetedUsers.has(userId);
