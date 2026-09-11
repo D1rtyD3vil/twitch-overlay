@@ -622,8 +622,8 @@
     <div id="emotePreviewBar"></div>
     <select id="chatModeSelect" style="display:none">
       <option value="twitch">Twitch Chat</option>
-      <option value="modsAndStreamer">🔒 Mod-Chat (Mods + Streamer)</option>
-      <option value="modsOnly">🤫 Mod-Chat (nur Mods)</option>
+      <option value="modsAndStreamer">1️⃣ 🔒 Mod-Chat (Mods + Streamer)</option>
+      <option value="modsOnly">2️⃣ 🤫 Mod-Chat (nur Mods)</option>
     </select>
     <div id="emotePickerWrap">
       <button id="emotePickerBtn" type="button" title="Eure Channel-Emotes">😊</button>
@@ -741,7 +741,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v77 · 11.09.2026';
+  const OVERLAY_VERSION = 'v79 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1474,7 +1474,7 @@
     row.className = 'modchat-row' + (opts.scope === 'mods' ? ' modchat-only' : '');
     const tag = document.createElement('span');
     tag.className = 'mc-tag';
-    tag.textContent = (opts.scope === 'mods' ? '🤫 ' : '🔒 ') + from + ':';
+    tag.textContent = (opts.scope === 'mods' ? '2️⃣🤫 ' : '1️⃣🔒 ') + from + ':';
     row.appendChild(tag);
     const textEl = document.createElement('span');
     textEl.className = 'mc-text';
@@ -1640,7 +1640,9 @@
 
   async function runBatch(){
     batchTimer = null;
-    if(!accessToken || !broadcasterId){ pendingLookups.clear(); return; }
+    // Twitch erlaubt die Sub-Listen-Abfrage nur dem Streamer selbst (nicht Mods, auch nicht mit passender Berechtigung) —
+    // bei Mods würde jeder Versuch fehlschlagen und wurde bisher fälschlich als "ausgeloggt" behandelt.
+    if(!accessToken || !broadcasterId || ownUserId !== broadcasterId){ pendingLookups.clear(); return; }
     const ids = Array.from(pendingLookups).slice(0,100);
     ids.forEach(id => pendingLookups.delete(id));
     if(!ids.length) return;
