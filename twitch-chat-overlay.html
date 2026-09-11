@@ -304,7 +304,7 @@
     border-left:1px solid var(--border);
   }
   #mainArea{ position:relative; } /* falls Stream als Seitenspalte hier reinwandert */
-  #streamContainer iframe{ width:100%; height:100%; border:none; display:block; }
+  #streamContainer iframe{ position:absolute; border:none; display:block; }
   #streamResizeHandle{
     position:absolute; left:0; right:0; bottom:0; height:16px;
     cursor: ns-resize;
@@ -616,7 +616,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v56 · 11.09.2026';
+  const OVERLAY_VERSION = 'v57 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1265,6 +1265,24 @@
     els.streamFrame.src = 'https://player.twitch.tv/?channel=' + encodeURIComponent(channel)
       + '&parent=' + encodeURIComponent(parent) + '&muted=true';
   }
+
+  // Video immer im echten 16:9 halten (schwarze Balken statt Verzerren), egal wie das Fenster gezogen wird
+  function fitStreamAspect(){
+    const w = els.streamContainer.clientWidth;
+    const h = els.streamContainer.clientHeight;
+    if(!w || !h) return;
+    let fw, fh;
+    if(w / h > 16 / 9){ fh = h; fw = h * 16 / 9; }
+    else { fw = w; fh = w * 9 / 16; }
+    els.streamFrame.style.width = fw + 'px';
+    els.streamFrame.style.height = fh + 'px';
+    els.streamFrame.style.left = ((w - fw) / 2) + 'px';
+    els.streamFrame.style.top = ((h - fh) / 2) + 'px';
+  }
+  if(window.ResizeObserver){
+    new ResizeObserver(fitStreamAspect).observe(els.streamContainer);
+  }
+  window.addEventListener('resize', fitStreamAspect);
   els.streamViewBtn.onclick = ()=>{
     const open = els.streamContainer.classList.toggle('open');
     localStorage.setItem('ligaChatOverlayStreamOpen', open ? '1' : '0');
