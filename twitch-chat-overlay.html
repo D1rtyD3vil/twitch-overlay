@@ -884,7 +884,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.5.5 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.5.6 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1714,7 +1714,7 @@
     if(ownUserId === broadcasterId) badges.broadcaster = '1';
     else if(isMod) badges.moderator = '1';
     const replyTo = twitchReply ? { parentMsgId: twitchReply.msgId, displayName: twitchReply.displayName, body: twitchReply.body } : null;
-    renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text, replyTo });
+    renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text, emotes: buildOwnMessageEmotePositions(text), replyTo });
     els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
     clearReplyTarget();
   }
@@ -2435,7 +2435,7 @@
         else if(e.emote_type === 'subscriptions'){
           category = e.tier === '3000' ? 'Tier 3' : e.tier === '2000' ? 'Tier 2' : 'Tier 1';
         }
-        return { name: e.name, url: animated ? animatedUrl : staticUrl, staticUrl, category };
+        return { id: e.id, name: e.name, url: animated ? animatedUrl : staticUrl, staticUrl, category };
       });
       renderEmotePicker();
     }catch(e){ /* Picker bleibt dann einfach leer */ }
@@ -2561,6 +2561,20 @@
       return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
     }
     return hex;
+  }
+
+  function buildOwnMessageEmotePositions(message){
+    // Für unsere eigenen gesendeten Nachrichten bekommen wir von Twitch keine Emote-Positionsdaten zurück
+    // (die schickt Twitch uns ja nicht selbst zu) — deshalb hier anhand der bekannten Channel-Emote-Namen
+    // selbst rekonstruieren, damit auch die eigenen Emotes als Bild statt als Text erscheinen.
+    const result = [];
+    const re = /\S+/g;
+    let m;
+    while((m = re.exec(message)) !== null){
+      const emote = (channelEmotes || []).find(e => e.name === m[0]);
+      if(emote) result.push({ id: emote.id, start: m.index, end: m.index + m[0].length - 1 });
+    }
+    return result;
   }
 
   function buildMessageHtml(message, emotes){
