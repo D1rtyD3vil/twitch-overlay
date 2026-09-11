@@ -748,7 +748,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v80 · 11.09.2026';
+  const OVERLAY_VERSION = 'v82 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -882,7 +882,15 @@
   }
   els.colorScheme.onchange = ()=>{ applyColorScheme(els.colorScheme.value); saveConfig(); };
   els.resetOnStreamStart.onchange = ()=>{ saveConfig(); };
-  els.showModsOnlyChannel.onchange = ()=>{ saveConfig(); };
+  function updateModsOnlyOptionAvailability(){
+    const opt = els.chatModeSelect.querySelector('option[value="modsOnly"]');
+    if(!opt) return;
+    opt.disabled = !els.showModsOnlyChannel.checked;
+    if(opt.disabled && els.chatModeSelect.value === 'modsOnly'){
+      els.chatModeSelect.value = 'modsAndStreamer';
+    }
+  }
+  els.showModsOnlyChannel.onchange = ()=>{ saveConfig(); updateModsOnlyOptionAvailability(); };
   function persistGreeted(){
     localStorage.setItem('ligaChatOverlayGreeted', JSON.stringify(Array.from(greetedUsers.entries())));
   }
@@ -891,6 +899,47 @@
   const SYNC_SERVER_URL = 'wss://d1rtyoverlay.duckdns.org';
   let syncWs = null;
   let hasReplayedHistory = false; // Chat-/Event-Verlauf nur beim allerersten Verbinden übernehmen, nicht bei jedem Reconnect
+  let hasReplayedModChatHistory = false; // Mod-Chat-Verlauf ebenso nur einmal übernehmen, nicht bei jedem "identify"
+
+  // Normaler Chat-Verlauf und Mod-Chat-Verlauf kommen zeitlich getrennt vom Server an (Mod-Chat erst nach
+  // dem "identify"). Damit beim Wiederherstellen nach F5 alles in der richtigen zeitlichen Reihenfolge
+  // erscheint (statt Mod-Nachrichten pauschal ans Ende zu hängen), sammeln wir beides und rendern erst
+  // gemeinsam, sortiert nach Zeitstempel.
+  let pendingRegularHistory = null; // null = noch nicht angekommen
+  let pendingModChatHistory = null;
+  let mergedHistoryRendered = false;
+  let mergedHistoryFallbackTimer = null;
+  function scheduleMergedHistoryRender(){
+    if(mergedHistoryRendered) return;
+    if(pendingRegularHistory !== null && pendingModChatHistory !== null){
+      renderMergedHistory();
+      return;
+    }
+    // Falls diese Person kein Mod ist, kommt 'modChatHistoryState' nie — nach kurzer Wartezeit trotzdem starten
+    if(!mergedHistoryFallbackTimer){
+      mergedHistoryFallbackTimer = setTimeout(()=>{
+        if(pendingModChatHistory === null) pendingModChatHistory = [];
+        renderMergedHistory();
+      }, 2000);
+    }
+  }
+  function renderMergedHistory(){
+    if(mergedHistoryRendered) return;
+    mergedHistoryRendered = true;
+    if(mergedHistoryFallbackTimer){ clearTimeout(mergedHistoryFallbackTimer); mergedHistoryFallbackTimer = null; }
+    const combined = [];
+    (pendingRegularHistory || []).forEach(item=>{
+      if(item.t === 'chat') combined.push({ ts: item.ts || 0, kind: 'chat', data: item });
+    });
+    (pendingModChatHistory || []).forEach(item=>{
+      combined.push({ ts: item.ts || 0, kind: 'modchat', data: item });
+    });
+    combined.sort((a,b)=> a.ts - b.ts);
+    combined.forEach(entry=>{
+      if(entry.kind === 'chat') renderMessage(entry.data, { isReplay: true });
+      else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, isReplay: true });
+    });
+  }
   function connectSyncServer(){
     try{ syncWs = new WebSocket(SYNC_SERVER_URL); }catch(e){ return; }
     syncWs.onopen = ()=>{ announceModStatus(); };
@@ -918,12 +967,11 @@
         });
         if(!hasReplayedHistory){
           hasReplayedHistory = true;
-          (msg.history || []).forEach(item=>{
-            if(item.t === 'chat') renderMessage(item, { isReplay: true });
-          });
+          pendingRegularHistory = msg.history || [];
           (msg.eventHistory || []).forEach(item=>{
             addEventEntry(item.text, item.ts);
           });
+          scheduleMergedHistoryRender();
         }
         if(msg.greetingList && msg.greetingList.length){
           applyGreetingListUpdate(msg.greetingList);
@@ -957,10 +1005,11 @@
         if(msg.scope === 'mods' && !els.showModsOnlyChannel.checked) return;
         renderModChatMessage(msg.from, msg.text, { scope: msg.scope });
       } else if(msg.type === 'modChatHistoryState'){
-        (msg.items || []).forEach(item=>{
-          if(item.scope === 'mods' && !els.showModsOnlyChannel.checked) return;
-          renderModChatMessage(item.from, item.text, { scope: item.scope, isReplay: true });
-        });
+        if(!hasReplayedModChatHistory){
+          hasReplayedModChatHistory = true;
+          pendingModChatHistory = (msg.items || []).filter(item => !(item.scope === 'mods' && !els.showModsOnlyChannel.checked));
+          scheduleMergedHistoryRender();
+        }
       } else if(msg.type === 'followEvent'){
         renderAlert(msg.userName + ' folgt jetzt! 💜');
       } else if(msg.type === 'modRoster'){
@@ -2348,7 +2397,7 @@
     // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
     // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
     if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
-      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes } });
+      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, ts: Date.now() } });
     }
   }
 
@@ -2397,6 +2446,7 @@
   document.getElementById('versionLabel').textContent = OVERLAY_VERSION;
   loadConfig();
   applyLayout();
+  updateModsOnlyOptionAvailability();
   restoreHistory();
   const savedDraft = localStorage.getItem('ligaChatOverlayDraft');
   if(savedDraft){ els.chatMessageInput.value = savedDraft; }
