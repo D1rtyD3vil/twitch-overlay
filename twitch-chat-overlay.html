@@ -884,7 +884,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.5.2 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.5.3 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1095,6 +1095,9 @@
       if(entry.kind === 'chat') renderMessage(entry.data, { isReplay: true });
       else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, color: entry.data.color, replyTo: entry.data.replyTo, isReplay: true });
     });
+    // Beim ersten Laden/F5 immer ans Ende springen — unabhängig von der "war gerade unten"-Prüfung
+    // pro Zeile, die zu diesem frühen Zeitpunkt (noch während des Seitenaufbaus) öfter danebenliegt.
+    requestAnimationFrame(()=>{ els.chat.scrollTop = els.chat.scrollHeight; });
   }
   function connectSyncServer(){
     try{ syncWs = new WebSocket(SYNC_SERVER_URL); }catch(e){ return; }
