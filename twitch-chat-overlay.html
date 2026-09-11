@@ -119,6 +119,10 @@
 
   /* ---------- Event-Liste + Chat nebeneinander ---------- */
   #mainArea{
+    display:flex; flex-direction:column;
+    flex:1; min-height:0;
+  }
+  #streamChatRow{
     display:flex; flex-direction:row;
     flex:1; min-height:0;
   }
@@ -132,6 +136,14 @@
     padding:8px;
   }
   #eventPanel.open{ display:block; }
+  #eventPanel.horizontal{
+    width:100%; flex:0 0 auto;
+    max-height:160px; min-height:60px;
+    border-right:none; border-bottom:1px solid var(--border);
+    display:none;
+  }
+  #eventPanel.horizontal.open{ display:block; }
+  #eventPanel.horizontal.bottom-mode{ border-bottom:none; border-top:1px solid var(--border); }
   .event-entry{
     font-size:12px;
     color:var(--parchment);
@@ -278,6 +290,20 @@
     background:#000;
   }
   #streamContainer.open{ display:block; }
+  #streamContainer.side-panel{
+    height:auto !important;
+    width:400px;
+    min-width:220px;
+    max-width:60vw;
+    flex:0 0 auto;
+    border-bottom:none;
+    border-right:1px solid var(--border);
+  }
+  #streamContainer.side-panel.side-right{
+    border-right:none;
+    border-left:1px solid var(--border);
+  }
+  #mainArea{ position:relative; } /* falls Stream als Seitenspalte hier reinwandert */
   #streamContainer iframe{ width:100%; height:100%; border:none; display:block; }
   #streamResizeHandle{
     position:absolute; left:0; right:0; bottom:0; height:16px;
@@ -300,6 +326,21 @@
     background: rgba(var(--gold-rgb),0.6);
     border-radius:4px 4px 0 0;
   }
+  /* Im Seiten-Modus wird aus dem Griff unten ein Griff an der senkrechten Kante */
+  #streamContainer.side-panel #streamResizeHandle{
+    left:auto; right:0; top:0; bottom:0; width:16px; height:auto;
+    cursor: ew-resize;
+    align-items:center; justify-content:flex-end;
+    flex-direction:column;
+  }
+  #streamContainer.side-panel.side-right #streamResizeHandle{ left:0; right:auto; align-items:flex-start; }
+  #streamContainer.side-panel #streamResizeHandle::before{
+    content:'◂▸';
+    width:14px; height:36px;
+    line-height:36px;
+    border-radius:4px 0 0 4px;
+  }
+  #streamContainer.side-panel.side-right #streamResizeHandle::before{ border-radius:0 4px 4px 0; }
   #streamResizeHandle.dragging::before{ background: rgba(var(--gold-rgb),0.9); }
   #streamDragOverlay{
     display:none;
@@ -362,6 +403,7 @@
     <button id="resetAllSessionBtn" style="display:none" title="Setzt die Begrüßungs-Session für dich und alle anderen zurück (läuft normalerweise automatisch beim ersten Verbinden pro Tag — dieser Knopf ist nur fürs Sicherheitsnetz da, z.B. bei einem 2. Stream am selben Tag)">Neue Session für alle</button>
     <button id="modViewBtn" style="display:none">🛡 Mod-Ansicht</button>
     <button id="streamViewBtn">📺 Stream</button>
+    <button id="stream169Btn" title="Stream-Vorschau auf 16:9 zurücksetzen (gegen Verzerren)">🔲 16:9</button>
     <button id="eventPanelBtn">📋 Events</button>
     <span id="versionLabel" style="margin-left:auto; opacity:0.5; font-size:11px;"></span>
   </div>
@@ -440,6 +482,23 @@
       </div>
     </details>
     <div class="row">
+      <label>Stream-Position
+        <select id="streamPositionInput">
+          <option value="top">Oben</option>
+          <option value="left">Links neben Chat</option>
+          <option value="right">Rechts neben Chat</option>
+        </select>
+      </label>
+      <label>Events-Liste-Position
+        <select id="eventPositionInput">
+          <option value="left">Links</option>
+          <option value="right">Rechts</option>
+          <option value="top">Oben</option>
+          <option value="bottom">Unten</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
       <button id="saveSettingsBtn">Speichern</button>
       <button id="obsModeBtn">OBS-Modus (Leiste ausblenden)</button>
       <button id="transparentBtn">Transparenz an/aus (für OBS)</button>
@@ -447,9 +506,11 @@
   </div>
 
   <div id="mainArea">
-    <div id="eventPanel"></div>
-    <div id="chat">
-      <div id="emptyHint">Noch keine Nachrichten. Channel eintragen und „Chat verbinden" klicken.</div>
+    <div id="streamChatRow">
+      <div id="eventPanel"></div>
+      <div id="chat">
+        <div id="emptyHint">Noch keine Nachrichten. Channel eintragen und „Chat verbinden" klicken.</div>
+      </div>
     </div>
   </div>
 
@@ -555,7 +616,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v54 · 11.09.2026';
+  const OVERLAY_VERSION = 'v56 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -579,6 +640,12 @@
     emptyHint: document.getElementById('emptyHint'),
     colorScheme: document.getElementById('colorSchemeInput'),
     resetOnStreamStart: document.getElementById('resetOnStreamStartInput'),
+    streamPosition: document.getElementById('streamPositionInput'),
+    eventPosition: document.getElementById('eventPositionInput'),
+    stream169Btn: document.getElementById('stream169Btn'),
+    app: document.getElementById('app'),
+    mainArea: document.getElementById('mainArea'),
+    streamChatRow: document.getElementById('streamChatRow'),
     modViewBtn: document.getElementById('modViewBtn'),
     modToolbar: document.getElementById('modToolbar'),
     timeoutSeconds: document.getElementById('timeoutSeconds'),
@@ -640,6 +707,8 @@
       greetedUsers = new Map(Array.isArray(saved) ? saved.map(entry => Array.isArray(entry) ? entry : [entry, Date.now()]) : []);
     }catch(e){ greetedUsers = new Map(); }
     els.resetOnStreamStart.checked = !!cfg.resetOnStreamStart;
+    els.streamPosition.value = cfg.streamPosition || 'top';
+    els.eventPosition.value = cfg.eventPosition || 'left';
     accessToken = localStorage.getItem('ligaChatOverlayToken') || null;
   }
   function saveConfig(){
@@ -650,6 +719,8 @@
       blockedBots: getBlockedBots(),
       colorScheme: els.colorScheme.value,
       resetOnStreamStart: els.resetOnStreamStart.checked,
+      streamPosition: els.streamPosition.value,
+      eventPosition: els.eventPosition.value,
     };
     localStorage.setItem('ligaChatOverlayConfig', JSON.stringify(cfg));
     clientId = cfg.clientId;
@@ -1200,35 +1271,112 @@
     if(open) loadStreamIframe(); else els.streamFrame.src = '';
   };
 
-  // Eigener Ziehgriff statt Browser-"resize" — sonst schluckt der eingebettete Player die Maus beim Ziehen
+  // ---------- Layout: Stream Oben/Links/Rechts, Events-Liste Links/Rechts ----------
+  function applyLayout(){
+    const streamPos = els.streamPosition.value; // top | left | right
+    const eventPos = els.eventPosition.value;   // left | right | top | bottom
+
+    // --- Events-Liste ---
+    els.eventPanel.classList.remove('horizontal', 'bottom-mode');
+    els.eventPanel.style.order = '';
+    if(eventPos === 'top' || eventPos === 'bottom'){
+      els.eventPanel.classList.add('horizontal');
+      if(eventPos === 'bottom') els.eventPanel.classList.add('bottom-mode');
+      els.eventPanel.style.order = eventPos === 'top' ? '-1' : '1';
+      if(els.eventPanel.parentElement !== els.mainArea){
+        els.mainArea.appendChild(els.eventPanel);
+      }
+    } else {
+      els.eventPanel.style.order = eventPos === 'right' ? '2' : '-2';
+      if(els.eventPanel.parentElement !== els.streamChatRow){
+        els.streamChatRow.insertBefore(els.eventPanel, els.streamChatRow.firstChild);
+      }
+    }
+
+    // --- Stream ---
+    if(streamPos === 'top'){
+      els.streamContainer.classList.remove('side-panel', 'side-right');
+      els.streamContainer.style.order = '';
+      if(els.streamContainer.parentElement !== els.app){
+        els.app.insertBefore(els.streamContainer, els.mainArea);
+      }
+    } else {
+      els.streamContainer.classList.add('side-panel');
+      els.streamContainer.classList.toggle('side-right', streamPos === 'right');
+      els.streamContainer.style.order = streamPos === 'left' ? '-3' : '3';
+      if(els.streamContainer.parentElement !== els.streamChatRow){
+        els.streamChatRow.insertBefore(els.streamContainer, els.streamChatRow.firstChild);
+      }
+    }
+    // gespeicherte Breite (Seiten-Modus) bzw. Höhe (Oben-Modus) wieder anwenden
+    if(streamPos === 'top'){
+      const h = localStorage.getItem('ligaChatOverlayStreamHeight');
+      if(h) els.streamContainer.style.height = h;
+      els.streamContainer.style.width = '';
+    } else {
+      const w = localStorage.getItem('ligaChatOverlayStreamWidth');
+      if(w) els.streamContainer.style.width = w;
+      els.streamContainer.style.height = '';
+    }
+  }
+  els.streamPosition.onchange = ()=>{ applyLayout(); saveConfig(); };
+  els.eventPosition.onchange = ()=>{ applyLayout(); saveConfig(); };
+
+  els.stream169Btn.onclick = ()=>{
+    const rect = els.streamContainer.getBoundingClientRect();
+    if(els.streamPosition.value === 'top'){
+      const newHeight = Math.round(rect.width * 9 / 16);
+      els.streamContainer.style.height = newHeight + 'px';
+      localStorage.setItem('ligaChatOverlayStreamHeight', newHeight + 'px');
+    } else {
+      const newWidth = Math.round(rect.height * 16 / 9);
+      els.streamContainer.style.width = newWidth + 'px';
+      localStorage.setItem('ligaChatOverlayStreamWidth', newWidth + 'px');
+    }
+  };
+
+  // Eigener Ziehgriff statt Browser-"resize" — sonst schluckt der eingebettete Player die Maus beim Ziehen.
+  // Richtung passt sich automatisch an: Höhe ziehen (Oben-Modus) oder Breite ziehen (Seiten-Modus).
   (function setupStreamResize(){
-    let dragging = false, startY = 0, startHeight = 0;
+    let dragging = false, startPos = 0, startSize = 0;
     els.streamResizeHandle.addEventListener('mousedown', (e)=>{
       dragging = true;
-      startY = e.clientY;
-      startHeight = els.streamContainer.getBoundingClientRect().height;
+      const horizontal = els.streamContainer.classList.contains('side-panel');
+      startPos = horizontal ? e.clientX : e.clientY;
+      startSize = horizontal ? els.streamContainer.getBoundingClientRect().width : els.streamContainer.getBoundingClientRect().height;
       els.streamResizeHandle.classList.add('dragging');
       els.streamDragOverlay.classList.add('active'); // fängt die Maus ab, damit der iframe sie nicht "schluckt"
       e.preventDefault();
     });
     document.addEventListener('mousemove', (e)=>{
       if(!dragging) return;
-      const delta = e.clientY - startY;
-      let newHeight = startHeight + delta;
-      newHeight = Math.max(120, Math.min(window.innerHeight * 0.9, newHeight));
-      els.streamContainer.style.height = newHeight + 'px';
+      const horizontal = els.streamContainer.classList.contains('side-panel');
+      if(horizontal){
+        const onRight = els.streamContainer.classList.contains('side-right');
+        const delta = onRight ? (startPos - e.clientX) : (e.clientX - startPos);
+        let newWidth = startSize + delta;
+        newWidth = Math.max(220, Math.min(window.innerWidth * 0.6, newWidth));
+        els.streamContainer.style.width = newWidth + 'px';
+      } else {
+        const delta = e.clientY - startPos;
+        let newHeight = startSize + delta;
+        newHeight = Math.max(120, Math.min(window.innerHeight * 0.9, newHeight));
+        els.streamContainer.style.height = newHeight + 'px';
+      }
     });
     document.addEventListener('mouseup', ()=>{
       if(!dragging) return;
       dragging = false;
       els.streamResizeHandle.classList.remove('dragging');
       els.streamDragOverlay.classList.remove('active');
-      localStorage.setItem('ligaChatOverlayStreamHeight', els.streamContainer.style.height);
+      if(els.streamContainer.classList.contains('side-panel')){
+        localStorage.setItem('ligaChatOverlayStreamWidth', els.streamContainer.style.width);
+      } else {
+        localStorage.setItem('ligaChatOverlayStreamHeight', els.streamContainer.style.height);
+      }
     });
   })();
 
-  const savedStreamHeight = localStorage.getItem('ligaChatOverlayStreamHeight');
-  if(savedStreamHeight) els.streamContainer.style.height = savedStreamHeight;
   if(localStorage.getItem('ligaChatOverlayStreamOpen') === '1'){
     els.streamContainer.classList.add('open');
     loadStreamIframe();
@@ -1860,6 +2008,7 @@
   // ---------- Start ----------
   document.getElementById('versionLabel').textContent = OVERLAY_VERSION;
   loadConfig();
+  applyLayout();
   restoreHistory();
   if(localStorage.getItem('ligaChatOverlayTransparent') === '1'){
     document.body.classList.add('obs-transparent');
