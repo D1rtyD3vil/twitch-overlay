@@ -884,7 +884,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.5.4 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.5.5 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1799,6 +1799,13 @@
       return esc(tok);
     }).join('');
   }
+  function buildReplyPreviewHtml(displayName, body){
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const shortBody = body.length > 50 ? body.slice(0, 50) + '…' : body;
+    let html = '↩ Antwort an ' + esc(displayName);
+    if(shortBody) html += ': ' + buildModChatMessageHtml(shortBody); // nutzt dieselbe Emote-Ersetzung wie im Mod-Chat
+    return html;
+  }
 
   function renderModChatMessage(from, text, opts){
     opts = opts || {};
@@ -1808,8 +1815,7 @@
     if(opts.replyTo){
       const replyLine = document.createElement('div');
       replyLine.className = 'reply-preview';
-      const shortBody = opts.replyTo.body.length > 50 ? opts.replyTo.body.slice(0, 50) + '…' : opts.replyTo.body;
-      replyLine.textContent = '↩ Antwort an ' + opts.replyTo.displayName + (shortBody ? ': ' + shortBody : '');
+      replyLine.innerHTML = buildReplyPreviewHtml(opts.replyTo.displayName, opts.replyTo.body);
       row.appendChild(replyLine);
     }
     const tag = document.createElement('span');
@@ -2626,8 +2632,7 @@
     if(replyTo){
       const replyLine = document.createElement('div');
       replyLine.className = 'reply-preview';
-      const shortBody = replyTo.body.length > 60 ? replyTo.body.slice(0, 60) + '…' : replyTo.body;
-      replyLine.textContent = '↩ Antwort an ' + replyTo.displayName + (shortBody ? ': ' + shortBody : '');
+      replyLine.innerHTML = buildReplyPreviewHtml(replyTo.displayName, replyTo.body);
       if(replyTo.parentMsgId){
         replyLine.classList.add('reply-preview-clickable');
         replyLine.onclick = (e)=>{
@@ -2762,6 +2767,20 @@
 
   // ---------- Start ----------
   document.getElementById('versionLabel').textContent = OVERLAY_VERSION;
+
+  // Ersten Klick nach Rückkehr ins Fenster (Tab-/Fenster-Wechsel) abfangen — der ist meist nur
+  // "Fenster aktivieren" gemeint, kein echter Klick auf den Inhalt darunter.
+  let suppressNextClick = false;
+  window.addEventListener('blur', ()=>{ suppressNextClick = false; });
+  window.addEventListener('focus', ()=>{ suppressNextClick = true; });
+  document.addEventListener('click', (e)=>{
+    if(suppressNextClick){
+      suppressNextClick = false;
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }, true); // Capture-Phase: fängt es ab, bevor Zeilen-Klicks (z.B. Antworten) überhaupt ausgelöst werden
+
   loadConfig();
   applyLayout();
   const savedChatMode = localStorage.getItem('ligaChatOverlayChatMode');
