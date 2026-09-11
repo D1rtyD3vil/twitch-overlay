@@ -330,10 +330,10 @@
   #streamContainer.side-panel #streamResizeHandle{
     left:auto; right:0; top:0; bottom:0; width:16px; height:auto;
     cursor: ew-resize;
-    align-items:center; justify-content:flex-end;
+    align-items:center; justify-content:center;
     flex-direction:column;
   }
-  #streamContainer.side-panel.side-right #streamResizeHandle{ left:0; right:auto; align-items:flex-start; }
+  #streamContainer.side-panel.side-right #streamResizeHandle{ left:0; right:auto; }
   #streamContainer.side-panel #streamResizeHandle::before{
     content:'◂▸';
     width:14px; height:36px;
@@ -374,6 +374,30 @@
     border:1px solid var(--border); border-radius:4px;
     padding:6px 8px; font-size:12px; font-family:inherit;
   }
+  #emotePickerWrap{ position:relative; }
+  #emotePickerBtn{
+    background:#12100c; color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:6px 8px; font-size:14px; cursor:pointer;
+  }
+  #emotePickerBtn:hover{ border-color:var(--gold); }
+  #emotePickerPopup{
+    display:none;
+    position:absolute; bottom:calc(100% + 6px); left:0;
+    width:260px; max-height:220px; overflow-y:auto;
+    background:var(--panel-solid); border:1px solid var(--border); border-radius:6px;
+    padding:8px;
+    grid-template-columns: repeat(5, 1fr);
+    gap:6px;
+    z-index:20;
+  }
+  #emotePickerPopup.open{ display:grid; }
+  #emotePickerPopup img{
+    width:32px; height:32px; object-fit:contain;
+    cursor:pointer; border-radius:4px; padding:2px;
+  }
+  #emotePickerPopup img:hover{ background: rgba(var(--gold-rgb),0.25); }
+  #emotePickerPopup .ep-empty{ font-size:11px; color:var(--parchment-dim); grid-column:1/-1; }
   .modchat-row{
     background: rgba(120,60,220,0.22);
     border-left:3px solid #8a4dff;
@@ -519,6 +543,10 @@
       <option value="twitch">Twitch Chat</option>
       <option value="mod">🔒 Mod-Chat (nur intern)</option>
     </select>
+    <div id="emotePickerWrap">
+      <button id="emotePickerBtn" type="button" title="Eure Channel-Emotes">😊</button>
+      <div id="emotePickerPopup"></div>
+    </div>
     <input id="chatMessageInput" type="text" placeholder="Nachricht in den Chat schreiben..." maxlength="500">
     <button id="sendChatBtn">Senden</button>
   </div>
@@ -616,7 +644,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v57 · 11.09.2026';
+  const OVERLAY_VERSION = 'v59 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -656,6 +684,8 @@
     chatInputBar: document.getElementById('chatInputBar'),
     chatMessageInput: document.getElementById('chatMessageInput'),
     chatModeSelect: document.getElementById('chatModeSelect'),
+    emotePickerBtn: document.getElementById('emotePickerBtn'),
+    emotePickerPopup: document.getElementById('emotePickerPopup'),
     sendChatBtn: document.getElementById('sendChatBtn'),
     streamViewBtn: document.getElementById('streamViewBtn'),
     eventPanelBtn: document.getElementById('eventPanelBtn'),
@@ -1185,6 +1215,7 @@
       }
 
       await fetchChannelBadges();
+      await fetchChannelEmotes();
       if(subscriberBadgeTierMap.size > 0) setTierStatus('aktiv ✓');
       else if(subscriptionsAvailable) setTierStatus('aktiv ✓ (im Chat aber nur generisches "Sub"-Badge, keine Tier-Badge-Daten im Kanal gefunden)');
       else setTierStatus('aktiv (nur generisches "Sub"-Badge sichtbar)');
@@ -1797,6 +1828,57 @@
       console.log('Sub-Badge-Versionen (zur Kontrolle):', subSet.versions.map(v=>({ id:v.id, title:v.title, ermittelteTier:subscriberBadgeTierMap.get(v.id) })));
     }catch(e){ /* egal, dann bleibt's beim generischen "Sub"-Badge */ }
   }
+
+  // ---------- Channel-Emote-Picker (nur eure eigenen Emotes, keine globalen Twitch-Emotes) ----------
+  let channelEmotes = [];
+  async function fetchChannelEmotes(){
+    if(!accessToken || !clientId || !broadcasterId) return;
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/chat/emotes?broadcaster_id=' + broadcasterId, {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(!res.ok) return;
+      const data = await res.json();
+      channelEmotes = (data.data || []).map(e => ({
+        name: e.name,
+        url: (e.images && (e.images.url_2x || e.images.url_1x)) || ''
+      })).filter(e => e.url);
+      renderEmotePicker();
+    }catch(e){ /* Picker bleibt dann einfach leer */ }
+  }
+  function renderEmotePicker(){
+    els.emotePickerPopup.innerHTML = '';
+    if(!channelEmotes.length){
+      const empty = document.createElement('div');
+      empty.className = 'ep-empty';
+      empty.textContent = 'Keine Channel-Emotes gefunden.';
+      els.emotePickerPopup.appendChild(empty);
+      return;
+    }
+    channelEmotes.forEach(em=>{
+      const img = document.createElement('img');
+      img.src = em.url;
+      img.alt = em.name;
+      img.title = em.name;
+      img.loading = 'lazy';
+      img.onclick = ()=>{
+        const current = els.chatMessageInput.value;
+        const sep = (current && !current.endsWith(' ')) ? ' ' : '';
+        els.chatMessageInput.value = current + sep + em.name + ' ';
+        els.chatMessageInput.focus();
+      };
+      els.emotePickerPopup.appendChild(img);
+    });
+  }
+  els.emotePickerBtn.onclick = (e)=>{
+    e.stopPropagation();
+    els.emotePickerPopup.classList.toggle('open');
+  };
+  document.addEventListener('click', (e)=>{
+    if(els.emotePickerPopup.classList.contains('open') && !els.emotePickerPopup.contains(e.target) && e.target !== els.emotePickerBtn){
+      els.emotePickerPopup.classList.remove('open');
+    }
+  });
 
   function applyBadgeTier(userId, badges){
     if(!badges.subscriber) return;
