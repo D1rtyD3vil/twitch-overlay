@@ -117,6 +117,7 @@
   }
   #modToolbar button.active{ background: var(--gold); color:#1a0f00; font-weight:700; }
   #timeoutStatus{ opacity:0.9; font-style:italic; }
+  #modsOnlineDisplay{ margin-left:auto; font-size:12px; color:var(--parchment-dim); }
 
   /* ---------- Event-Liste + Chat nebeneinander ---------- */
   #mainArea{
@@ -509,6 +510,7 @@
     <button id="timeoutUnitBtn" title="Zwischen Sekunden und Minuten umschalten">⇄ Min.</button>
     <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
     <span id="timeoutStatus"></span>
+    <span id="modsOnlineDisplay"></span>
   </div>
 
   <div id="settingsPanel">
@@ -725,7 +727,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v74 · 11.09.2026';
+  const OVERLAY_VERSION = 'v75 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -760,6 +762,7 @@
     timeoutUnitBtn: document.getElementById('timeoutUnitBtn'),
     timeoutModeBtn: document.getElementById('timeoutModeBtn'),
     timeoutStatus: document.getElementById('timeoutStatus'),
+    modsOnlineDisplay: document.getElementById('modsOnlineDisplay'),
     chatInputBar: document.getElementById('chatInputBar'),
     chatMessageInput: document.getElementById('chatMessageInput'),
     chatModeSelect: document.getElementById('chatModeSelect'),
@@ -901,6 +904,9 @@
         if(msg.greetingList && msg.greetingList.length){
           applyGreetingListUpdate(msg.greetingList);
         }
+        if(msg.modsOnline){
+          els.modsOnlineDisplay.textContent = msg.modsOnline.length ? ('🟢 Mods online: ' + msg.modsOnline.join(', ')) : '';
+        }
       } else if(msg.type === 'greetingListUpdate'){
         applyGreetingListUpdate(msg.words);
       } else if(msg.type === 'greetUpdate'){
@@ -927,6 +933,9 @@
         renderModChatMessage(msg.from, msg.text);
       } else if(msg.type === 'followEvent'){
         renderAlert(msg.userName + ' folgt jetzt! 💜');
+      } else if(msg.type === 'modsOnline'){
+        const names = msg.names || [];
+        els.modsOnlineDisplay.textContent = names.length ? ('🟢 Mods online: ' + names.join(', ')) : '';
       } else if(msg.type === 'suspiciousFlag'){
         if(!isMod) return;
         const row = document.querySelector('.chat-row[data-message-id="' + CSS.escape(msg.messageId) + '"]');
@@ -941,7 +950,7 @@
     if(syncWs && syncWs.readyState === 1) syncWs.send(JSON.stringify(obj));
   }
   function announceModStatus(){
-    syncSend({ type: 'identify', isMod: isMod });
+    syncSend({ type: 'identify', isMod: isMod, displayName: ownDisplayName || ownLogin || '' });
   }
   connectSyncServer();
 
