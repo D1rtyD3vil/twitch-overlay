@@ -809,7 +809,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.1.1 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.2.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -891,7 +891,7 @@
   let batchTimer = null;
   let greetedUsers = new Map();     // userId -> Zeitstempel (Date.now()), wann diese Person begrüßt hat
   let messageHistory = [];          // zuletzt angezeigte Chat-Zeilen (als HTML), fürs Wiederherstellen nach Neuladen
-  const MAX_ROWS = 80;
+  const MAX_ROWS = 300;
 
   // ---------- Konfiguration laden/speichern ----------
   function loadConfig(){
