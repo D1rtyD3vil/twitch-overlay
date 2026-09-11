@@ -40,7 +40,7 @@
   }
   /* ---------- Kopfleiste / Einstellungen ---------- */
   #topbar{
-    display:flex; align-items:center; gap:8px;
+    display:flex; align-items:center; gap:8px; flex-wrap:wrap;
     padding:6px 10px;
     background: var(--panel-solid);
     border-bottom:1px solid var(--border);
@@ -215,7 +215,8 @@
   }
   .reply-preview-clickable{ cursor:pointer; text-decoration:underline dotted; }
   .reply-preview-clickable:hover{ color:var(--gold); opacity:1; }
-  .chat-row{ cursor:pointer; }
+  .chat-row{ cursor:pointer; transition: background-color 0.1s; }
+  .chat-row:hover{ background-color: rgba(255,255,255,0.06); }
   @keyframes reply-flash{
     0%   { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0); }
     30%  { box-shadow: 0 0 0 3px rgba(var(--gold-rgb),0.6); }
@@ -803,7 +804,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v99 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.0.1 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
