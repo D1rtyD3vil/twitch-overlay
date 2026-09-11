@@ -188,7 +188,7 @@
        trotz mehr Inhalt). Normaler Block-Fluss + gezieltes scrollTop ist zuverlässiger. */
   }
   .chat-row{
-    display:flex; align-items:baseline; gap:6px;
+    display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;
     padding:4px 8px;
     margin-bottom:4px;
     border-radius:5px;
@@ -201,6 +201,16 @@
   .chat-row.first-greeting{
     border-left-color: var(--gold);
     background-color: rgba(var(--gold-rgb), 0.22);
+  }
+
+  .reply-preview{
+    flex-basis:100%; order:-1;
+    font-size:11px; color:var(--parchment-dim);
+    opacity:0.85;
+    padding-left:2px;
+    margin-bottom:1px;
+    font-style:italic;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
 
   .chat-row.mentioned-row{
@@ -593,8 +603,6 @@
       </label>
     </div>
 
-    </div>
-
     <details id="advancedListsDetails">
       <summary>Erweitert: Begrüßungs-Wörter &amp; ausgeblendete Bots</summary>
       <div class="row">
@@ -765,7 +773,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v90 · 11.09.2026';
+  const OVERLAY_VERSION = 'v93 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1853,7 +1861,10 @@
     tagStr.split(';').forEach(pair=>{
       const idx = pair.indexOf('=');
       if(idx === -1) return;
-      tags[pair.substring(0,idx)] = pair.substring(idx+1);
+      const key = pair.substring(0,idx);
+      const raw = pair.substring(idx+1);
+      // IRCv3-Tag-Escaping rückgängig machen (wichtig u.a. für reply-parent-msg-body, das Leerzeichen enthält)
+      tags[key] = raw.replace(/\\s/g, ' ').replace(/\\:/g, ';').replace(/\\r/g, '\r').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
     });
     return tags;
   }
@@ -2123,7 +2134,14 @@
     if(tags['bits'] && parseInt(tags['bits'], 10) > 0){
       addEventEntry(displayName + ' hat ' + tags['bits'] + ' Bits gecheert 💎');
     }
-    renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes, messageId: tags['id'] });
+    let replyTo = null;
+    if(tags['reply-parent-msg-id']){
+      replyTo = {
+        displayName: tags['reply-parent-display-name'] || tags['reply-parent-user-login'] || 'jemandem',
+        body: tags['reply-parent-msg-body'] || ''
+      };
+    }
+    renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes, messageId: tags['id'], replyTo });
   }
 
   // ---------- "Unter Beobachtung" (Suspicious User) — nur für Mods sichtbar, kommt vom Server ----------
@@ -2346,7 +2364,7 @@
     }));
   }
 
-  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId }, opts){
+  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId, replyTo }, opts){
     opts = opts || {};
     const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber') || Object.prototype.hasOwnProperty.call(badges, 'founder');
     const greeting = isGreetingMessage(message);
@@ -2371,6 +2389,14 @@
     row.onclick = ()=>{
       if(timeoutModeActive) executeTimeout(userId, displayName, row);
     };
+
+    if(replyTo){
+      const replyLine = document.createElement('div');
+      replyLine.className = 'reply-preview';
+      const shortBody = replyTo.body.length > 60 ? replyTo.body.slice(0, 60) + '…' : replyTo.body;
+      replyLine.textContent = '↩ Antwort an ' + replyTo.displayName + (shortBody ? ': ' + shortBody : '');
+      row.appendChild(replyLine);
+    }
 
     const statusIcon = document.createElement('span');
     statusIcon.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
@@ -2444,7 +2470,7 @@
     // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
     // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
     if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
-      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, ts: Date.now() } });
+      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, replyTo, ts: Date.now() } });
     }
   }
 
