@@ -525,6 +525,8 @@
           <option value="rot-schwarz">Rot / Schwarz</option>
           <option value="schwarz-orange">Schwarz / Orange</option>
           <option value="orange-schwarz">Orange / Schwarz</option>
+          <option value="clean-dark">Clean — Dark</option>
+          <option value="clean-light">Clean — Hell</option>
         </select>
       </label>
     </div>
@@ -648,6 +650,18 @@
       ink:'#4a1a04', panelSolid:'#5c2206', panel:'rgba(92,34,6,0.87)', border:'#2b1203',
       gold:'#ffcf3d', goldRgb:'255,207,61', goldTier:'#ffe27a', heraldryRed:'#1f0a02',
       parchment:'#fff1d6', parchmentDim:'#e8b978'
+    },
+    'clean-dark': {
+      label:'Clean — Dark',
+      ink:'#16181c', panelSolid:'#1e2126', panel:'rgba(30,33,38,0.88)', border:'#2a2d33',
+      gold:'#3b82f6', goldRgb:'59,130,246', goldTier:'#60a5fa', heraldryRed:'#dc2626',
+      parchment:'#e8e8ea', parchmentDim:'#9a9da3'
+    },
+    'clean-light': {
+      label:'Clean — Hell',
+      ink:'#f5f5f7', panelSolid:'#ffffff', panel:'rgba(255,255,255,0.92)', border:'#d8dadf',
+      gold:'#2563eb', goldRgb:'37,99,235', goldTier:'#1d4ed8', heraldryRed:'#dc2626',
+      parchment:'#1a1a1e', parchmentDim:'#6b6f76'
     }
   };
 
@@ -688,7 +702,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v66 · 11.09.2026';
+  const OVERLAY_VERSION = 'v67 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
