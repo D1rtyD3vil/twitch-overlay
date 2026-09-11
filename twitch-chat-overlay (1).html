@@ -1,0 +1,2493 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Liga Chat Overlay</title>
+<style>
+  :root{
+    /* Stream-Look: Schwarz / Rot / Neon-Orange (Dirty Devil) — Standard, per Farbschema-Auswahl änderbar */
+    --ink:#0a0a0c;
+    --panel: rgba(26,5,5,0.82);
+    --panel-solid:#1a0505;
+    --parchment:#f5eeee;
+    --parchment-dim:#cc9999;
+    --gold:#ff3b3b;
+    --gold-rgb:255,59,59;
+    --bronze:#b08d57;
+    --silver:#c9c9c9;
+    --gold-tier:#ff6b6b;
+    --green:#5fae6b;
+    --red:#e8432f;
+    --heraldry-red:#ff1f1f;
+    --border:#3d0d0d;
+    --input-bg:#12100c;
+  }
+  html,body{
+    margin:0; padding:0;
+    background: var(--ink); /* dunkler Standard-Hintergrund für normale Browser-Ansicht */
+    font-family: "Segoe UI", "Trebuchet MS", sans-serif;
+    color: var(--parchment);
+    height:100%;
+  }
+  body.obs-transparent, body.obs-transparent #app{
+    background: transparent; /* nur für OBS Browser Source aktivieren */
+  }
+  #app{
+    display:flex; flex-direction:column;
+    height:100vh;
+    width:100vw;
+    box-sizing:border-box;
+  }
+  /* ---------- Kopfleiste / Einstellungen ---------- */
+  #topbar{
+    display:flex; align-items:center; gap:8px;
+    padding:6px 10px;
+    background: var(--panel-solid);
+    border-bottom:1px solid var(--border);
+    font-size:12px;
+  }
+  #topbar.hidden-for-obs{ display:none; }
+  #topbar button{
+    background: var(--ink);
+    color: var(--parchment);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:4px 8px;
+    cursor:pointer;
+    font-size:12px;
+  }
+  #topbar button:hover{ border-color:var(--gold); }
+  #statusDot{ width:8px; height:8px; border-radius:50%; background:var(--red); display:inline-block; }
+  #statusDot.on{ background:var(--green); }
+  #syncStatusDot{ width:8px; height:8px; border-radius:50%; background:var(--red); display:inline-block; }
+  #syncStatusDot.on{ background:var(--green); }
+  #tierStatus{ opacity:0.75; }
+
+  #settingsPanel{
+    display:none;
+    flex-direction:column;
+    gap:8px;
+    padding:12px;
+    background: var(--panel-solid);
+    border-bottom:1px solid var(--border);
+    font-size:12px;
+  }
+  #settingsPanel.open{ display:flex; }
+  #settingsPanel label{ display:flex; flex-direction:column; gap:3px; }
+  #settingsPanel input, #settingsPanel textarea{
+    background:var(--input-bg); color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:5px 7px; font-size:12px; font-family:inherit;
+  }
+  #settingsPanel textarea{ resize:vertical; min-height:44px; }
+  #settingsPanel .row{ display:flex; gap:8px; align-items:flex-end; flex-wrap:wrap; }
+  #settingsPanel small{ color:var(--parchment-dim); line-height:1.4; }
+  #settingsPanel details{
+    border:1px solid var(--border); border-radius:4px;
+    padding:6px 8px; background:var(--input-bg);
+  }
+  #settingsPanel details[open]{ padding-bottom:10px; }
+  #settingsPanel summary{
+    cursor:pointer; color:var(--gold); font-size:12px; font-weight:600;
+    outline:none;
+  }
+  #settingsPanel details .row{ margin-top:8px; }
+  #settingsPanel a{ color:var(--gold); }
+  #settingsPanel select{
+    background:var(--input-bg); color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:5px 7px; font-size:12px; font-family:inherit;
+  }
+
+  #modToolbar{
+    display:none;
+    align-items:center; gap:10px; flex-wrap:wrap;
+    padding:8px 10px;
+    background: var(--heraldry-red);
+    border-bottom:1px solid var(--border);
+    font-size:12px;
+  }
+  #modToolbar.open{ display:flex; }
+  #modToolbar input[type=number]{
+    width:56px; background:var(--input-bg); color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px; padding:4px 6px; font-size:12px;
+  }
+  #modToolbar button{
+    background: var(--ink); color: var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:4px 8px; cursor:pointer; font-size:12px;
+  }
+  #modToolbar button.active{ background: var(--gold); color:#1a0f00; font-weight:700; }
+  #timeoutStatus{ opacity:0.9; font-style:italic; }
+  #modRosterDisplay{ margin-left:auto; font-size:12px; color:var(--parchment-dim); }
+  #modRosterDisplay .roster-offline{ opacity:0.5; }
+  #modRosterDisplay .roster-sep{ opacity:0.4; margin:0 6px; }
+
+  /* ---------- Event-Liste + Chat nebeneinander ---------- */
+  #mainArea{
+    display:flex; flex-direction:column;
+    flex:1; min-height:0;
+  }
+  #streamChatRow{
+    display:flex; flex-direction:row;
+    flex:1; min-height:0;
+  }
+  #eventPanel{
+    display:none;
+    width:230px; flex:0 0 230px;
+    min-height:0;
+    overflow-y:auto;
+    border-right:1px solid var(--border);
+    background:var(--panel-solid);
+    padding:8px;
+  }
+  #eventPanel.open{ display:block; }
+  #eventPanel.horizontal{
+    width:100%; flex:0 0 auto;
+    max-height:160px; min-height:60px;
+    border-right:none; border-bottom:1px solid var(--border);
+    display:none;
+  }
+  #eventPanel.horizontal.open{ display:block; }
+  #eventPanel.horizontal.bottom-mode{ border-bottom:none; border-top:1px solid var(--border); }
+  .event-entry{
+    font-size:12px;
+    color:var(--parchment);
+    padding:5px 6px;
+    margin-bottom:4px;
+    border-radius:4px;
+    background:var(--panel);
+    border-left:2px solid var(--gold);
+    line-height:1.35;
+  }
+  .event-entry .ee-time{ color:var(--parchment-dim); font-size:10px; display:block; margin-top:2px; }
+
+  /* ---------- Chat ---------- */
+  #chat{
+    flex:1;
+    min-height:0;
+    overflow-y:auto;
+    padding:8px 10px;
+    /* bewusst KEIN display:flex + justify-content:flex-end hier — diese Kombination
+       lässt manche Browser den Scroll-Bereich falsch berechnen (scrollHeight == clientHeight
+       trotz mehr Inhalt). Normaler Block-Fluss + gezieltes scrollTop ist zuverlässiger. */
+  }
+  .chat-row{
+    display:flex; align-items:baseline; gap:6px;
+    padding:4px 8px;
+    margin-bottom:4px;
+    border-radius:5px;
+    background: var(--panel);
+    border-left:3px solid var(--border);
+    font-size: 16px;
+    line-height:1.35;
+    word-break: break-word;
+  }
+  .chat-row.first-greeting{
+    border-left-color: var(--gold);
+    background-color: rgba(var(--gold-rgb), 0.22);
+  }
+
+  .chat-row.mentioned-row{
+    border-left-color: #38bdf8;
+    background-color: rgba(56, 189, 248, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.35);
+  }
+
+  .chat-row.suspicious-row{
+    border-left-color: #eab308;
+    box-shadow: inset 0 0 0 1px rgba(234, 179, 8, 0.4);
+  }
+  .suspicious-badge{
+    display:inline-block;
+    background:#eab308; color:#1a0f00;
+    font-size:10px; font-weight:700;
+    border-radius:3px; padding:1px 5px;
+    margin-right:6px;
+  }
+
+  .chat-row.timeout-armed{ cursor:pointer; }
+  .chat-row.timeout-armed:hover{ outline:2px solid var(--red); outline-offset:-2px; }
+  .chat-row.timed-out{ opacity:0.45; }
+  .chat-row.timed-out .message-text{ text-decoration: line-through; }
+
+  .chat-row.alert-row{
+    background: linear-gradient(90deg, rgba(var(--gold-rgb),0.4), rgba(var(--gold-rgb),0.08));
+    border-left-color: var(--gold);
+    align-items:center;
+  }
+  .alert-icon{ flex:0 0 auto; color: var(--gold); }
+  .alert-text{ color: var(--parchment); font-weight:600; }
+
+  .automod-card{
+    background: var(--panel-solid);
+    border:1px solid var(--gold);
+    border-radius:6px;
+    padding:8px 10px;
+    margin-bottom:4px;
+    font-size:13px;
+  }
+  .automod-card .am-header{ font-weight:700; color:var(--gold); margin-bottom:4px; }
+  .automod-card .am-text{ color:var(--parchment); margin-bottom:8px; word-break:break-word; }
+  .automod-card .am-buttons{ display:flex; gap:8px; }
+  .automod-card button{
+    flex:1; padding:5px 8px; border-radius:4px; border:none; cursor:pointer;
+    font-weight:700; font-size:12px;
+  }
+  .am-allow{ background:var(--green); color:#0a1a0a; }
+  .am-deny{ background:var(--red); color:#1a0a0a; }
+
+  #userCardBackdrop{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:50;
+    align-items:center; justify-content:center;
+  }
+  #userCardBackdrop.open{ display:flex; }
+  #userCard{
+    background:var(--panel-solid); border:1px solid var(--border); border-radius:8px;
+    padding:16px; width:320px; max-width:85vw; max-height:75vh; overflow-y:auto;
+    color:var(--parchment); position:relative; font-size:13px;
+  }
+  #userCard h3{ margin:0 0 10px 0; padding-right:20px; }
+  #userCard .uc-row{ margin-bottom:5px; color:var(--parchment-dim); }
+  #userCard .uc-msglist{ margin-top:10px; border-top:1px solid var(--border); padding-top:8px; }
+  #userCard .uc-msglist div{ margin-bottom:4px; line-height:1.4; }
+  #userCard .uc-close{
+    position:absolute; top:10px; right:10px; cursor:pointer; background:none;
+    border:none; color:var(--parchment); font-size:16px; line-height:1;
+  }
+
+  #streamStartBackdrop{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:60;
+    align-items:center; justify-content:center;
+  }
+  #streamStartBackdrop.open{ display:flex; }
+  #streamStartPopup{
+    background:var(--panel-solid); border:2px solid var(--gold); border-radius:8px;
+    padding:20px; width:300px; max-width:85vw; text-align:center;
+    color:var(--parchment); font-size:15px;
+  }
+  #streamStartCountdown{ font-size:12px; color:var(--parchment-dim); }
+  #streamStartPopup button{
+    flex:1; padding:8px; border-radius:4px; border:none; cursor:pointer;
+    font-weight:700; font-size:13px;
+  }
+  #streamStartResetBtn{ background:var(--gold); color:#1a0f00; }
+  #streamStartCancelBtn{ background:var(--ink); color:var(--parchment); border:1px solid var(--border) !important; }
+
+  .status-icon{ flex:0 0 auto; width:15px; height:15px; display:inline-flex; cursor:pointer; }
+  .status-icon:hover{ opacity:0.7; }
+  .status-icon svg{ width:15px; height:15px; }
+  .status-icon.ok svg{ stroke: var(--green); }
+  .status-icon.no svg{ stroke: var(--red); }
+
+  .role-badge, .tier-badge{
+    flex:0 0 auto;
+    font-size:10px;
+    font-weight:600;
+    padding:1px 5px;
+    border-radius:3px;
+    line-height:1.5;
+  }
+  .role-broadcaster{ background: var(--heraldry-red); color:#f3d9c9; }
+  .role-mod{ background:#3a5e2b; color:#e2f0d7; }
+  .role-vip{ background:#6a3a1e; color:#f3ddc9; }
+  .role-founder{ background:#1e6a5c; color:#d6f5ed; }
+
+  .tier-badge{ color:#1b1712; }
+  .tier-1{ background: var(--bronze); }
+  .tier-2{ background: var(--silver); }
+  .tier-3{ background: var(--gold-tier); }
+  .tier-sub{ background: var(--parchment-dim); }
+
+  .display-name{ font-weight:700; flex:0 0 auto; }
+  .message-text{ color: var(--parchment); flex:1 1 0%; min-width:0; overflow-wrap:break-word; word-break:break-word; }
+  .chat-emote{ height:1.5em; width:auto; vertical-align:middle; margin:0 1px; display:inline-block; }
+
+  #streamContainer{
+    display:none;
+    position:relative;
+    overflow:hidden;
+    height:300px;
+    min-height:120px;
+    max-height:90vh;
+    border-bottom:1px solid var(--border);
+    background:#000;
+  }
+  #streamContainer.open{ display:block; }
+  #streamContainer.side-panel{
+    height:auto !important;
+    width:400px;
+    min-width:220px;
+    max-width:60vw;
+    flex:0 0 auto;
+    border-bottom:none;
+    border-right:1px solid var(--border);
+  }
+  #streamContainer.side-panel.side-right{
+    border-right:none;
+    border-left:1px solid var(--border);
+  }
+  #mainArea{ position:relative; } /* falls Stream als Seitenspalte hier reinwandert */
+  #streamContainer iframe{ position:absolute; border:none; display:block; }
+  #streamResizeHandle{
+    position:absolute; left:0; right:0; bottom:0; height:16px;
+    cursor: ns-resize;
+    display:flex; align-items:flex-end; justify-content:center;
+    background: transparent;
+    opacity:0;
+    transition: opacity 0.15s ease;
+    z-index:5;
+  }
+  #streamContainer:hover #streamResizeHandle,
+  #streamResizeHandle.dragging{ opacity:1; }
+  #streamResizeHandle::before{
+    content:'▾';
+    display:block;
+    width:36px; text-align:center;
+    line-height:14px; height:14px;
+    font-size:13px;
+    color:#fff;
+    background: rgba(var(--gold-rgb),0.6);
+    border-radius:4px 4px 0 0;
+  }
+  /* Im Seiten-Modus wird aus dem Griff unten ein Griff an der senkrechten Kante */
+  #streamContainer.side-panel #streamResizeHandle{
+    left:auto; right:0; top:0; bottom:0; width:16px; height:auto;
+    cursor: ew-resize;
+    align-items:center; justify-content:center;
+    flex-direction:column;
+  }
+  #streamContainer.side-panel.side-right #streamResizeHandle{ left:0; right:auto; }
+  #streamContainer.side-panel #streamResizeHandle::before{
+    content:'◂▸';
+    width:14px; height:36px;
+    line-height:36px;
+    border-radius:4px 0 0 4px;
+  }
+  #streamContainer.side-panel.side-right #streamResizeHandle::before{ border-radius:0 4px 4px 0; }
+  #streamResizeHandle.dragging::before{ background: rgba(var(--gold-rgb),0.9); }
+  #streamDragOverlay{
+    display:none;
+    position:fixed; inset:0; z-index:999; cursor:ns-resize;
+  }
+  #streamDragOverlay.active{ display:block; }
+
+  #emptyHint{
+    color: var(--parchment-dim);
+    font-size:13px;
+    padding:8px;
+    display:none;
+  }
+
+  #emotePreviewBar{
+    display:none;
+    position:absolute; bottom:calc(100% + 12px); left:0; right:0; height:0;
+    pointer-events:none;
+    z-index:15;
+  }
+  #emotePreviewBar.visible{ display:block; }
+  .epb-bubble{
+    position:absolute; bottom:0; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    background: var(--panel-solid);
+    border:1px solid var(--border);
+    border-radius:8px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.45);
+    padding:6px 8px;
+    font-size:10px; color:var(--parchment-dim);
+    white-space:nowrap;
+  }
+  .epb-bubble::after{
+    content:'';
+    position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    border:6px solid transparent;
+    border-top-color: var(--panel-solid);
+  }
+  .epb-bubble img{ width:32px; height:32px; object-fit:contain; }
+
+  #chatInputBar{
+    display:none;
+    position:relative;
+    align-items:center; gap:8px;
+    padding:8px 10px;
+    background: var(--panel-solid);
+    border-top:1px solid var(--border);
+  }
+  #chatInputBar.visible{ display:flex; }
+  #chatInputBar input{
+    flex:1;
+    background:var(--input-bg); color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:6px 8px; font-size:13px; font-family:inherit;
+  }
+  #chatModeSelect{
+    background:var(--input-bg); color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:6px 8px; font-size:12px; font-family:inherit;
+  }
+  #emotePickerWrap{ position:relative; }
+  #emotePickerBtn{
+    background:var(--input-bg); color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:6px 8px; font-size:14px; cursor:pointer;
+  }
+  #emotePickerBtn:hover{ border-color:var(--gold); }
+  #emotePickerPopup{
+    display:none;
+    position:absolute; bottom:calc(100% + 6px); left:0;
+    width:270px; max-height:280px; overflow-y:auto;
+    background:var(--panel-solid); border:1px solid var(--border); border-radius:6px;
+    padding:8px;
+    z-index:20;
+  }
+  #emotePickerPopup.open{ display:block; }
+  #emotePickerPopup .ep-category{
+    font-size:11px; font-weight:700; color:var(--gold);
+    margin:6px 0 4px 0; text-transform:uppercase; letter-spacing:0.02em;
+  }
+  #emotePickerPopup .ep-category:first-child{ margin-top:0; }
+  #emoteSearchInput{
+    width:100%; box-sizing:border-box;
+    background:var(--input-bg); color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:5px 7px; font-size:12px; font-family:inherit;
+    margin-bottom:8px;
+  }
+  #emotePickerPopup .ep-grid{
+    display:grid; grid-template-columns: repeat(5, 1fr); gap:6px;
+  }
+  #emotePickerPopup img{
+    width:32px; height:32px; object-fit:contain;
+    cursor:pointer; border-radius:4px; padding:2px;
+  }
+  #emotePickerPopup img:hover{ background: rgba(var(--gold-rgb),0.25); }
+  #emotePickerPopup .ep-empty{ font-size:11px; color:var(--parchment-dim); }
+  .modchat-row{
+    background: rgba(120,60,220,0.22);
+    border-left:3px solid #8a4dff;
+    border-radius:5px;
+    padding:4px 8px;
+    margin-bottom:4px;
+    font-size:14px;
+    animation: modchat-pulse 3.2s linear infinite;
+  }
+  @keyframes modchat-pulse{
+    0%   { box-shadow: 0 0 0 0 rgba(138,77,255,0.25); }
+    50%  { box-shadow: 0 0 6px 1px rgba(138,77,255,0.4); }
+    100% { box-shadow: 0 0 0 0 rgba(138,77,255,0.25); }
+  }
+  .modchat-row .mc-tag{ color:#c9a8ff; font-weight:700; margin-right:6px; }
+  .modchat-row .mc-text{ color:var(--parchment); }
+  .modchat-row.modchat-only{
+    background: rgba(20,160,160,0.2);
+    border-left-color:#14b8a6;
+  }
+  .modchat-row.modchat-only .mc-tag{ color:#5eead4; }
+  @keyframes modchat-only-pulse{
+    0%   { box-shadow: 0 0 0 0 rgba(20,184,166,0.25); }
+    50%  { box-shadow: 0 0 6px 1px rgba(20,184,166,0.4); }
+    100% { box-shadow: 0 0 0 0 rgba(20,184,166,0.25); }
+  }
+  .modchat-row.modchat-only{ animation-name: modchat-only-pulse; }
+  #chatInputBar button{
+    background: var(--gold); color:#1a0f00; font-weight:700;
+    border:none; border-radius:4px;
+    padding:6px 14px; cursor:pointer; font-size:13px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <span id="statusDot"></span>
+    <span id="connLabel">nicht verbunden</span>
+    <span style="opacity:0.4">|</span>
+    <span id="syncStatusDot"></span>
+    <span id="syncConnLabel" title="Verbindung zu unserem eigenen Team-Server. Sorgt dafür, dass alle Mods dasselbe sehen (Mod-Chat, wer online ist, Begrüßungs-Haken usw.). Rot = diese Extras funktionieren gerade nicht, Twitch-Chat selbst läuft trotzdem normal weiter.">Sync: nicht verbunden</span>
+    <span style="opacity:0.4">|</span>
+    <span id="tierStatus">Sub-Tier: aus</span>
+    <button id="toggleSettings">⚙ Einstellungen</button>
+    <button id="resetAllSessionBtn" style="display:none" title="Setzt die Begrüßungs-Session für dich und alle anderen zurück (läuft normalerweise automatisch beim ersten Verbinden pro Tag — dieser Knopf ist nur fürs Sicherheitsnetz da, z.B. bei einem 2. Stream am selben Tag)">Neue Session für alle</button>
+    <button id="modViewBtn" style="display:none">🛡 Mod-Ansicht</button>
+    <button id="streamViewBtn">📺 Stream</button>
+    <button id="stream169Btn" title="Stream-Vorschau auf 16:9 zurücksetzen (gegen Verzerren)">🔲 16:9</button>
+    <button id="eventPanelBtn">📋 Events</button>
+    <span id="versionLabel" style="margin-left:auto; opacity:0.5; font-size:11px;"></span>
+  </div>
+
+  <div id="streamContainer">
+    <iframe id="streamFrame" allowfullscreen></iframe>
+    <div id="streamResizeHandle"></div>
+  </div>
+  <div id="streamDragOverlay"></div>
+
+  <div id="modToolbar">
+    <span>⏱ Timeout:</span>
+    <input type="number" id="timeoutSeconds" min="1" step="1" value="600"> <span id="timeoutUnitLabel">Sek.</span>
+    <button id="timeoutUnitBtn" title="Zwischen Sekunden und Minuten umschalten">⇄ Min.</button>
+    <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
+    <span id="timeoutStatus"></span>
+    <span id="modRosterDisplay"></span>
+  </div>
+
+  <div id="settingsPanel">
+    <div class="row">
+      <label>Twitch-Channel (Name aus der URL)
+        <input id="channelInput" placeholder="z.B. meinkanal">
+      </label>
+      <button id="connectBtn">Chat verbinden</button>
+    </div>
+
+    <div class="row">
+      <label style="flex:1;min-width:220px">Twitch Client-ID (für echte T1/T2/T3-Anzeige + Mod-Tools)
+        <input id="clientIdInput" placeholder="Client-ID aus dev.twitch.tv/console">
+      </label>
+      <button id="loginBtn">Mit Twitch verbinden (Login)</button>
+    </div>
+    <small>
+      Ohne Login wird bei Abos nur ein neutrales „Sub"-Badge angezeigt, und Mod-Tools sind nicht verfügbar.
+      Für echte T1/T2/T3-Badges und die Mod-Ansicht (Timeout-Tool) brauchst du einmalig eine eigene Twitch-App:
+      <a href="https://dev.twitch.tv/console/apps" target="_blank">dev.twitch.tv/console/apps</a> →
+      neue App anlegen → als „OAuth Redirect URL" <b>genau die Adresse eintragen, unter der diese Datei später erreichbar ist</b>
+      (z.B. eine GitHub-Pages-URL oder <code>http://localhost:PORT/...</code>, wenn du sie lokal per kleinem Webserver öffnest —
+      ein reines <code>file://</code> funktioniert bei Twitch-Login nicht). Die Client-ID hier eintragen, dann auf „Mit Twitch verbinden" klicken.
+      Mods loggen sich mit demselben Link und derselben Client-ID einfach mit ihrem eigenen Twitch-Account ein — die Client-ID ist kein Geheimnis,
+      die kann jeder benutzen, der den Link hat.
+    </small>
+
+    <div class="row">
+      <label style="flex-direction:row; align-items:center; gap:6px;">
+        <input type="checkbox" id="resetOnStreamStartInput" style="width:auto;">
+        Begrüßungen zum Streamstart zurücksetzen?
+      </label>
+    </div>
+
+    <div class="row">
+      <label style="flex-direction:row; align-items:center; gap:6px;">
+        <input type="checkbox" id="showModsOnlyChannelInput" style="width:auto;" checked>
+        🤫 "Nur Mods"-Kanal bei mir anzeigen
+      </label>
+    </div>
+
+    <div class="row">
+      <label>Farbschema
+        <select id="colorSchemeInput">
+          <option value="schwarz-rot">Schwarz / Rot</option>
+          <option value="rot-schwarz">Rot / Schwarz</option>
+          <option value="schwarz-orange">Schwarz / Orange</option>
+          <option value="orange-schwarz">Orange / Schwarz</option>
+          <option value="clean-dark">Clean — Dark</option>
+          <option value="clean-light">Clean — Hell</option>
+        </select>
+      </label>
+    </div>
+
+    <details id="advancedListsDetails">
+      <summary>Erweitert: Begrüßungs-Wörter &amp; ausgeblendete Bots</summary>
+      <div class="row">
+        <label style="flex:1">Begrüßungs-Wörter (kommagetrennt, gelten als „hat begrüßt")
+          <textarea id="greetingsInput"></textarea>
+        </label>
+      </div>
+      <div class="row">
+        <button id="syncGreetingsBtn" type="button" style="display:none">🔄 Diese Liste an alle senden (auch Server)</button>
+      </div>
+      <div class="row">
+        <label style="flex:1">Bots ausblenden (kommagetrennt, Twitch-Login-Name, Groß/Klein egal)
+          <textarea id="blockedBotsInput"></textarea>
+        </label>
+      </div>
+    </details>
+    <div class="row">
+      <label>Stream-Position
+        <select id="streamPositionInput">
+          <option value="top">Oben</option>
+          <option value="left">Links neben Chat</option>
+          <option value="right">Rechts neben Chat</option>
+        </select>
+      </label>
+      <label>Events-Liste-Position
+        <select id="eventPositionInput">
+          <option value="left">Links</option>
+          <option value="right">Rechts</option>
+          <option value="top">Oben</option>
+          <option value="bottom">Unten</option>
+        </select>
+      </label>
+    </div>
+    <div class="row">
+      <button id="saveSettingsBtn">Speichern</button>
+    </div>
+  </div>
+
+  <div id="mainArea">
+    <div id="streamChatRow">
+      <div id="eventPanel"></div>
+      <div id="chat">
+        <div id="emptyHint">Noch keine Nachrichten. Channel eintragen und „Chat verbinden" klicken.</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="chatInputBar">
+    <div id="emotePreviewBar"></div>
+    <select id="chatModeSelect" style="display:none">
+      <option value="twitch">Twitch Chat</option>
+      <option value="modsAndStreamer">1️⃣ 🔒 Mod-Chat (Mods + Streamer)</option>
+      <option value="modsOnly">2️⃣ 🤫 Mod-Chat (nur Mods)</option>
+    </select>
+    <div id="emotePickerWrap">
+      <button id="emotePickerBtn" type="button" title="Eure Channel-Emotes">😊</button>
+      <div id="emotePickerPopup">
+        <input id="emoteSearchInput" type="text" placeholder="Emotes suchen...">
+        <div id="emoteResultsContainer"></div>
+      </div>
+    </div>
+    <input id="chatMessageInput" type="text" placeholder="Nachricht in den Chat schreiben..." maxlength="500">
+    <button id="sendChatBtn">Senden</button>
+  </div>
+
+  <div id="userCardBackdrop">
+    <div id="userCard"></div>
+  </div>
+
+  <div id="streamStartBackdrop">
+    <div id="streamStartPopup">
+      <div>📺 Stream wurde gestartet!</div>
+      <div style="margin:8px 0;">Begrüßungen zurücksetzen?</div>
+      <div id="streamStartCountdown"></div>
+      <div style="display:flex; gap:8px; margin-top:10px;">
+        <button id="streamStartResetBtn">Jetzt zurücksetzen</button>
+        <button id="streamStartCancelBtn">Nicht zurücksetzen</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+(function(){
+  const CHECK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 12 10 18 20 6"></polyline></svg>';
+  const CROSS_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="5" x2="19" y2="19"></line><line x1="19" y1="5" x2="5" y2="19"></line></svg>';
+
+  // Hier einmalig eintragen, bevor du die Datei hochlädst: dann müssen Mods
+  // NUR NOCH auf "Mit Twitch verbinden" klicken — Channel + Client-ID sind
+  // schon vorausgefüllt, kein Rumtippen für jeden Mod nötig.
+  const DEFAULT_CLIENT_ID = '5495juzgyub7s2io3p42uog5s5mdf3';   // Liga Giveaway Dashboard App
+  const DEFAULT_CHANNEL   = 'd1rtyd3vil';
+
+  const COLOR_SCHEMES = {
+    'schwarz-rot': {
+      label:'Schwarz / Rot',
+      ink:'#0a0a0c', panelSolid:'#1a0505', panel:'rgba(26,5,5,0.82)', border:'#3d0d0d',
+      gold:'#ff3b3b', goldRgb:'255,59,59', goldTier:'#ff6b6b', heraldryRed:'#ff1f1f',
+      parchment:'#f5eeee', parchmentDim:'#cc9999', inputBg:'#12100c'
+    },
+    'rot-schwarz': {
+      label:'Rot / Schwarz',
+      ink:'#33080a', panelSolid:'#4a0d10', panel:'rgba(74,13,16,0.85)', border:'#220606',
+      gold:'#ff7a3d', goldRgb:'255,122,61', goldTier:'#ffb14d', heraldryRed:'#1a0404',
+      parchment:'#f7ece2', parchmentDim:'#e0ad93', inputBg:'#1c0505'
+    },
+    'schwarz-orange': {
+      label:'Schwarz / Orange',
+      ink:'#0a0a0c', panelSolid:'#1a0f05', panel:'rgba(26,15,5,0.82)', border:'#3d2409',
+      gold:'#ff9d1f', goldRgb:'255,157,31', goldTier:'#ffc247', heraldryRed:'#c2261a',
+      parchment:'#f5efe2', parchmentDim:'#d9b98a', inputBg:'#12100c'
+    },
+    'orange-schwarz': {
+      label:'Orange / Schwarz',
+      ink:'#4a1a04', panelSolid:'#5c2206', panel:'rgba(92,34,6,0.87)', border:'#2b1203',
+      gold:'#ffcf3d', goldRgb:'255,207,61', goldTier:'#ffe27a', heraldryRed:'#1f0a02',
+      parchment:'#fff1d6', parchmentDim:'#e8b978', inputBg:'#2a1503'
+    },
+    'clean-dark': {
+      label:'Clean — Dark',
+      ink:'#16181c', panelSolid:'#1e2126', panel:'rgba(30,33,38,0.88)', border:'#2a2d33',
+      gold:'#3b82f6', goldRgb:'59,130,246', goldTier:'#60a5fa', heraldryRed:'#dc2626',
+      parchment:'#e8e8ea', parchmentDim:'#9a9da3', inputBg:'#0f1115'
+    },
+    'clean-light': {
+      label:'Clean — Hell',
+      ink:'#f5f5f7', panelSolid:'#ffffff', panel:'rgba(255,255,255,0.92)', border:'#d8dadf',
+      gold:'#2563eb', goldRgb:'37,99,235', goldTier:'#1d4ed8', heraldryRed:'#dc2626',
+      parchment:'#1a1a1e', parchmentDim:'#6b6f76', inputBg:'#eef0f3'
+    }
+  };
+
+  const DEFAULT_GREETINGS = [
+    // Moin-Familie
+    'moin','moinsen','moinmoin','moinsn','moinz','moinihr','moini',
+    // Hallo/Hi-Familie
+    'hi','hii','hiii','hiho','hey','heyy','heyho','heyhey','heyo','hallo','hallöchen','hallochen',
+    'hallihallo','hallihallöchen','servus','sers','seas','servas','seawas',
+    // Tach/Tag
+    'tach','tachchen','tachtach','tagchen','tag','mahlzeit',
+    // Yo/Sup
+    'yo','yoyo','jo','joa','sup','wusup','wassup','whatsup','ayy','aye','wasgeht','allesklar','na',
+    // Huhu/Hoi/Ahoi
+    'huhu','hoi','ahoi','ahoy','n7','o7',
+    // Tageszeit-Grüße
+    'abend','nabend','gutenabend','morgen','gutenmorgen','mornin','morning','evening','evenin','gn8',
+    // Regional DACH
+    'grüezi','gruezi','grüßgott','gruessgott','grias','pfiati','grüßdich','gruessdich','jutentach',
+    // Englisch
+    'hello','hellooo','howdy','greetings','welcome','gm',
+    // Internationale Grüße
+    'salve','ola','hola','salut','bonjour','ciao','chao','konnichiwa','ohayo','annyeong',
+    'merhaba','selam','salaam','namaste','privet','cześć','czesc','hej','hejsan',
+    'goedemorgen','shalom',
+    // Sonstiges
+    'wb','welcomeback',
+    // Community-eigene Begriffe (Liga der Heftigkeiten)
+    'd1rtyola','d1rtymoin','d1rtyhallo'
+  ];
+
+  const DEFAULT_BLOCKED_BOTS = [
+    'nightbot','streamelements','streamlabs','moobot','fossabot','wizebot',
+    'phantombot','soundalerts','commanderroot','sery_bot','own3d','pretzelrocks',
+    'deepbot','ankhbot','vivbot','coebot','botisimo','streamlootsbot','kofistreambot'
+  ];
+
+  const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
+
+  // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
+  const OVERLAY_VERSION = 'v86 · 11.09.2026';
+
+  const els = {
+    channel: document.getElementById('channelInput'),
+    clientId: document.getElementById('clientIdInput'),
+    greetings: document.getElementById('greetingsInput'),
+    syncGreetingsBtn: document.getElementById('syncGreetingsBtn'),
+    blockedBots: document.getElementById('blockedBotsInput'),
+    connectBtn: document.getElementById('connectBtn'),
+    loginBtn: document.getElementById('loginBtn'),
+    saveBtn: document.getElementById('saveSettingsBtn'),
+    toggleSettings: document.getElementById('toggleSettings'),
+    resetAllBtn: document.getElementById('resetAllSessionBtn'),
+    panel: document.getElementById('settingsPanel'),
+    topbar: document.getElementById('topbar'),
+    statusDot: document.getElementById('statusDot'),
+    syncStatusDot: document.getElementById('syncStatusDot'),
+    syncConnLabel: document.getElementById('syncConnLabel'),
+    connLabel: document.getElementById('connLabel'),
+    tierStatus: document.getElementById('tierStatus'),
+    chat: document.getElementById('chat'),
+    emptyHint: document.getElementById('emptyHint'),
+    colorScheme: document.getElementById('colorSchemeInput'),
+    resetOnStreamStart: document.getElementById('resetOnStreamStartInput'),
+    showModsOnlyChannel: document.getElementById('showModsOnlyChannelInput'),
+    streamPosition: document.getElementById('streamPositionInput'),
+    eventPosition: document.getElementById('eventPositionInput'),
+    stream169Btn: document.getElementById('stream169Btn'),
+    app: document.getElementById('app'),
+    mainArea: document.getElementById('mainArea'),
+    streamChatRow: document.getElementById('streamChatRow'),
+    modViewBtn: document.getElementById('modViewBtn'),
+    modToolbar: document.getElementById('modToolbar'),
+    timeoutSeconds: document.getElementById('timeoutSeconds'),
+    timeoutUnitLabel: document.getElementById('timeoutUnitLabel'),
+    timeoutUnitBtn: document.getElementById('timeoutUnitBtn'),
+    timeoutModeBtn: document.getElementById('timeoutModeBtn'),
+    timeoutStatus: document.getElementById('timeoutStatus'),
+    modRosterDisplay: document.getElementById('modRosterDisplay'),
+    chatInputBar: document.getElementById('chatInputBar'),
+    chatMessageInput: document.getElementById('chatMessageInput'),
+    chatModeSelect: document.getElementById('chatModeSelect'),
+    emotePickerBtn: document.getElementById('emotePickerBtn'),
+    emotePickerPopup: document.getElementById('emotePickerPopup'),
+    emotePreviewBar: document.getElementById('emotePreviewBar'),
+    emoteSearchInput: document.getElementById('emoteSearchInput'),
+    emoteResultsContainer: document.getElementById('emoteResultsContainer'),
+    sendChatBtn: document.getElementById('sendChatBtn'),
+    streamViewBtn: document.getElementById('streamViewBtn'),
+    eventPanelBtn: document.getElementById('eventPanelBtn'),
+    eventPanel: document.getElementById('eventPanel'),
+    streamContainer: document.getElementById('streamContainer'),
+    streamFrame: document.getElementById('streamFrame'),
+    streamResizeHandle: document.getElementById('streamResizeHandle'),
+    streamDragOverlay: document.getElementById('streamDragOverlay'),
+    userCardBackdrop: document.getElementById('userCardBackdrop'),
+    streamStartBackdrop: document.getElementById('streamStartBackdrop'),
+    streamStartCountdown: document.getElementById('streamStartCountdown'),
+    streamStartResetBtn: document.getElementById('streamStartResetBtn'),
+    streamStartCancelBtn: document.getElementById('streamStartCancelBtn'),
+    userCard: document.getElementById('userCard'),
+  };
+
+  let ws = null;
+  let accessToken = null;
+  let broadcasterId = null;   // ID des Twitch-Kanals (nicht zwingend der eingeloggte Nutzer)
+  let ownUserId = null;       // ID des eingeloggten Nutzers (Streamer oder Mod)
+  let ownLogin = null;
+  let ownDisplayName = null;
+  let isMod = false;
+  let subscriptionsAvailable = false; // T1/T2/T3-Daten gibt Twitch nur dem Streamer selbst frei, nicht mal Mods
+  let timeoutModeActive = false;
+  let clientId = '';
+  const tierCache = new Map();      // userId -> '1000' | '2000' | '3000' | null
+  const pendingLookups = new Set();
+  let batchTimer = null;
+  let greetedUsers = new Map();     // userId -> Zeitstempel (Date.now()), wann diese Person begrüßt hat
+  let messageHistory = [];          // zuletzt angezeigte Chat-Zeilen (als HTML), fürs Wiederherstellen nach Neuladen
+  const MAX_ROWS = 80;
+
+  // ---------- Konfiguration laden/speichern ----------
+  function loadConfig(){
+    let cfg = {};
+    try{ cfg = JSON.parse(localStorage.getItem('ligaChatOverlayConfig') || '{}'); }catch(e){}
+    els.channel.value = cfg.channel || DEFAULT_CHANNEL || '';
+    els.clientId.value = cfg.clientId || DEFAULT_CLIENT_ID || '';
+    const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(cfg.greetings || [])]));
+    els.greetings.value = merged.join(', ');
+    const mergedBots = Array.from(new Set([...DEFAULT_BLOCKED_BOTS, ...(cfg.blockedBots || [])]));
+    els.blockedBots.value = mergedBots.join(', ');
+    clientId = els.clientId.value;
+    els.colorScheme.value = cfg.colorScheme && COLOR_SCHEMES[cfg.colorScheme] ? cfg.colorScheme : 'schwarz-rot';
+    applyColorScheme(els.colorScheme.value);
+    try{
+      const saved = JSON.parse(localStorage.getItem('ligaChatOverlayGreeted') || '[]');
+      greetedUsers = new Map(Array.isArray(saved) ? saved.map(entry => Array.isArray(entry) ? entry : [entry, Date.now()]) : []);
+    }catch(e){ greetedUsers = new Map(); }
+    els.resetOnStreamStart.checked = !!cfg.resetOnStreamStart;
+    els.showModsOnlyChannel.checked = cfg.showModsOnlyChannel === undefined ? true : !!cfg.showModsOnlyChannel;
+    els.streamPosition.value = cfg.streamPosition || 'top';
+    els.eventPosition.value = cfg.eventPosition || 'left';
+    accessToken = localStorage.getItem('ligaChatOverlayToken') || null;
+  }
+  function saveConfig(){
+    const cfg = {
+      channel: els.channel.value.trim(),
+      clientId: els.clientId.value.trim(),
+      greetings: getGreetingKeywords(),
+      blockedBots: getBlockedBots(),
+      colorScheme: els.colorScheme.value,
+      resetOnStreamStart: els.resetOnStreamStart.checked,
+      showModsOnlyChannel: els.showModsOnlyChannel.checked,
+      streamPosition: els.streamPosition.value,
+      eventPosition: els.eventPosition.value,
+    };
+    localStorage.setItem('ligaChatOverlayConfig', JSON.stringify(cfg));
+    clientId = cfg.clientId;
+  }
+  function applyColorScheme(name){
+    const s = COLOR_SCHEMES[name];
+    if(!s) return;
+    const root = document.documentElement.style;
+    root.setProperty('--ink', s.ink);
+    root.setProperty('--panel', s.panel);
+    root.setProperty('--panel-solid', s.panelSolid);
+    root.setProperty('--parchment', s.parchment);
+    root.setProperty('--parchment-dim', s.parchmentDim);
+    root.setProperty('--gold', s.gold);
+    root.setProperty('--gold-rgb', s.goldRgb);
+    root.setProperty('--gold-tier', s.goldTier);
+    root.setProperty('--heraldry-red', s.heraldryRed);
+    root.setProperty('--border', s.border);
+    root.setProperty('--input-bg', s.inputBg);
+  }
+  els.colorScheme.onchange = ()=>{ applyColorScheme(els.colorScheme.value); saveConfig(); };
+  els.resetOnStreamStart.onchange = ()=>{ saveConfig(); };
+  function updateModsOnlyOptionAvailability(){
+    const opt = els.chatModeSelect.querySelector('option[value="modsOnly"]');
+    if(!opt) return;
+    opt.disabled = !els.showModsOnlyChannel.checked;
+    if(opt.disabled && els.chatModeSelect.value === 'modsOnly'){
+      els.chatModeSelect.value = 'modsAndStreamer';
+    }
+  }
+  els.showModsOnlyChannel.onchange = ()=>{ saveConfig(); updateModsOnlyOptionAvailability(); };
+  function persistGreeted(){
+    localStorage.setItem('ligaChatOverlayGreeted', JSON.stringify(Array.from(greetedUsers.entries())));
+  }
+
+  // ---------- Sync-Server (teilt Begrüßungs-Liste & Sub-Tiers live mit allen offenen Tool-Fenstern) ----------
+  const SYNC_SERVER_URL = 'wss://d1rtyoverlay.duckdns.org';
+  let syncWs = null;
+  let hasReplayedHistory = false; // Chat-/Event-Verlauf nur beim allerersten Verbinden übernehmen, nicht bei jedem Reconnect
+  let hasReplayedModChatHistory = false; // Mod-Chat-Verlauf ebenso nur einmal übernehmen, nicht bei jedem "identify"
+
+  // Normaler Chat-Verlauf und Mod-Chat-Verlauf kommen zeitlich getrennt vom Server an (Mod-Chat erst nach
+  // dem "identify"). Damit beim Wiederherstellen nach F5 alles in der richtigen zeitlichen Reihenfolge
+  // erscheint (statt Mod-Nachrichten pauschal ans Ende zu hängen), sammeln wir beides und rendern erst
+  // gemeinsam, sortiert nach Zeitstempel.
+  let pendingRegularHistory = null; // null = noch nicht angekommen
+  let pendingModChatHistory = null;
+  let channelEmotesLoaded = false; // Emote-Liste muss da sein, bevor der Mod-Chat-Verlauf Emotes ersetzen kann
+  let mergedHistoryRendered = false;
+  let mergedHistoryFallbackTimer = null;
+  function scheduleMergedHistoryRender(){
+    if(mergedHistoryRendered) return;
+    if(pendingRegularHistory !== null && pendingModChatHistory !== null && channelEmotesLoaded){
+      renderMergedHistory();
+      return;
+    }
+    // Falls diese Person kein Mod ist (kommt 'modChatHistoryState' nie) oder die Emote-Liste mal nicht lädt —
+    // nach kurzer Wartezeit trotzdem starten, lieber ohne Emote-Bildchen als gar keine Wiedergabe
+    if(!mergedHistoryFallbackTimer){
+      mergedHistoryFallbackTimer = setTimeout(()=>{
+        if(pendingModChatHistory === null) pendingModChatHistory = [];
+        channelEmotesLoaded = true;
+        renderMergedHistory();
+      }, 3000);
+    }
+  }
+  function renderMergedHistory(){
+    if(mergedHistoryRendered) return;
+    mergedHistoryRendered = true;
+    if(mergedHistoryFallbackTimer){ clearTimeout(mergedHistoryFallbackTimer); mergedHistoryFallbackTimer = null; }
+    const combined = [];
+    (pendingRegularHistory || []).forEach(item=>{
+      if(item.t === 'chat') combined.push({ ts: item.ts || 0, kind: 'chat', data: item });
+    });
+    (pendingModChatHistory || []).forEach(item=>{
+      combined.push({ ts: item.ts || 0, kind: 'modchat', data: item });
+    });
+    combined.sort((a,b)=> a.ts - b.ts);
+    combined.forEach(entry=>{
+      if(entry.kind === 'chat') renderMessage(entry.data, { isReplay: true });
+      else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, isReplay: true });
+    });
+  }
+  function connectSyncServer(){
+    try{ syncWs = new WebSocket(SYNC_SERVER_URL); }catch(e){ return; }
+    syncWs.onopen = ()=>{
+      setSyncConnStatus(true);
+      announceModStatus();
+    };
+    syncWs.onmessage = (evt)=>{
+      let msg;
+      try{ msg = JSON.parse(evt.data); }catch(e){ return; }
+      if(msg.type === 'state'){
+        (msg.greeted || []).forEach(entry=>{
+          const id = Array.isArray(entry) ? entry[0] : entry;
+          const ts = Array.isArray(entry) ? entry[1] : Date.now();
+          if(!greetedUsers.has(id)) greetedUsers.set(id, ts);
+        });
+        persistGreeted();
+        document.querySelectorAll('.chat-row[data-user-id]').forEach(row=>{
+          if(greetedUsers.has(row.dataset.userId)){
+            const icon = row.querySelector('.status-icon');
+            if(icon){ icon.className = 'status-icon ok'; icon.innerHTML = CHECK_SVG; }
+          }
+        });
+        Object.keys(msg.tiers || {}).forEach(id=>{
+          if(msg.tiers[id] && (tierCache.get(id) === undefined || tierCache.get(id) === null)){
+            tierCache.set(id, msg.tiers[id]);
+            updateRenderedTiers([id]);
+          }
+        });
+        if(!hasReplayedHistory){
+          hasReplayedHistory = true;
+          pendingRegularHistory = msg.history || [];
+          (msg.eventHistory || []).forEach(item=>{
+            addEventEntry(item.text, item.ts);
+          });
+          scheduleMergedHistoryRender();
+        }
+        if(msg.greetingList && msg.greetingList.length){
+          applyGreetingListUpdate(msg.greetingList);
+        }
+        if(msg.modRoster){
+          renderModRoster(msg.modRoster);
+        }
+      } else if(msg.type === 'greetingListUpdate'){
+        applyGreetingListUpdate(msg.words);
+      } else if(msg.type === 'greetUpdate'){
+        if(msg.greeted) greetedUsers.set(msg.userId, msg.ts || Date.now()); else greetedUsers.delete(msg.userId);
+        persistGreeted();
+        document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(msg.userId) + '"] .status-icon').forEach(el=>{
+          el.className = 'status-icon ' + (msg.greeted ? 'ok' : 'no');
+          el.innerHTML = msg.greeted ? CHECK_SVG : CROSS_SVG;
+        });
+      } else if(msg.type === 'resetGreetings'){
+        greetedUsers = new Map();
+        persistGreeted();
+        document.querySelectorAll('.status-icon').forEach(el=>{
+          el.className = 'status-icon no'; el.innerHTML = CROSS_SVG;
+        });
+      } else if(msg.type === 'tierUpdate'){
+        tierCache.set(msg.userId, msg.tier);
+        updateRenderedTiers([msg.userId]);
+      } else if(msg.type === 'automodHold'){
+        renderAutomodHold(msg.id, msg.userName, msg.text);
+      } else if(msg.type === 'automodResolved'){
+        removeAutomodHold(msg.id);
+      } else if(msg.type === 'modChatMessage'){
+        if(msg.scope === 'mods' && !els.showModsOnlyChannel.checked) return;
+        renderModChatMessage(msg.from, msg.text, { scope: msg.scope });
+      } else if(msg.type === 'modChatHistoryState'){
+        if(!hasReplayedModChatHistory){
+          hasReplayedModChatHistory = true;
+          pendingModChatHistory = (msg.items || []).filter(item => !(item.scope === 'mods' && !els.showModsOnlyChannel.checked));
+          scheduleMergedHistoryRender();
+        }
+      } else if(msg.type === 'followEvent'){
+        renderAlert(msg.userName + ' folgt jetzt! 💜');
+      } else if(msg.type === 'modRoster'){
+        renderModRoster(msg.roster || []);
+      } else if(msg.type === 'suspiciousFlag'){
+        if(!isMod) return;
+        const row = document.querySelector('.chat-row[data-message-id="' + CSS.escape(msg.messageId) + '"]');
+        if(row) applySuspiciousFlag(row);
+        else pendingSuspiciousIds.add(msg.messageId);
+      }
+    };
+    syncWs.onclose = ()=>{ setSyncConnStatus(false); setTimeout(connectSyncServer, 4000); };
+    syncWs.onerror = ()=>{ try{ syncWs.close(); }catch(e){} };
+  }
+  function syncSend(obj){
+    if(syncWs && syncWs.readyState === 1) syncWs.send(JSON.stringify(obj));
+  }
+  function renderModRoster(roster){
+    els.modRosterDisplay.innerHTML = '';
+    const streamerEntry = roster.find(r => r.isBroadcaster);
+    const modEntries = roster.filter(r => !r.isBroadcaster);
+    if(streamerEntry){
+      const s = document.createElement('span');
+      s.textContent = '👑 ' + streamerEntry.name + ': ' + (streamerEntry.online ? '🟢 Online' : '⚪ Offline');
+      els.modRosterDisplay.appendChild(s);
+    }
+    if(modEntries.length){
+      if(streamerEntry){
+        const sep = document.createElement('span');
+        sep.className = 'roster-sep';
+        sep.textContent = '|';
+        els.modRosterDisplay.appendChild(sep);
+      }
+      const label = document.createElement('span');
+      label.textContent = 'Mods: ';
+      els.modRosterDisplay.appendChild(label);
+      modEntries.forEach((m, i)=>{
+        const item = document.createElement('span');
+        if(!m.online) item.className = 'roster-offline';
+        item.textContent = m.name + (m.online ? ' 🟢' : '') + (i < modEntries.length - 1 ? ', ' : '');
+        els.modRosterDisplay.appendChild(item);
+      });
+    }
+  }
+
+  function announceModStatus(){
+    syncSend({ type: 'identify', isMod: isMod, displayName: ownDisplayName || ownLogin || '', isBroadcaster: ownUserId === broadcasterId });
+    updateChatModeOptions();
+  }
+  function updateChatModeOptions(){
+    // Alle (auch der Streamer) sehen jetzt beide Mod-Chat-Optionen; Sichtbarkeit des "nur Mods"-Kanals
+    // wird über das eigene Häkchen in den Einstellungen gesteuert, nicht mehr technisch verweigert.
+  }
+  connectSyncServer();
+
+  // ---------- AutoMod-Warteschlange ----------
+  function renderAutomodHold(id, userName, text){
+    if(document.getElementById('am-' + id)) return; // schon angezeigt
+    const card = document.createElement('div');
+    card.className = 'automod-card';
+    card.id = 'am-' + id;
+    const header = document.createElement('div');
+    header.className = 'am-header';
+    header.textContent = '🛡 AutoMod hält zurück — ' + userName;
+    card.appendChild(header);
+    const textEl = document.createElement('div');
+    textEl.className = 'am-text';
+    textEl.textContent = text;
+    card.appendChild(textEl);
+    const buttons = document.createElement('div');
+    buttons.className = 'am-buttons';
+    const allowBtn = document.createElement('button');
+    allowBtn.className = 'am-allow';
+    allowBtn.textContent = 'Erlauben';
+    allowBtn.onclick = ()=> syncSend({ type: 'automodResolve', id: id, action: 'ALLOW' });
+    const denyBtn = document.createElement('button');
+    denyBtn.className = 'am-deny';
+    denyBtn.textContent = 'Ablehnen';
+    denyBtn.onclick = ()=> syncSend({ type: 'automodResolve', id: id, action: 'DENY' });
+    buttons.appendChild(allowBtn);
+    buttons.appendChild(denyBtn);
+    card.appendChild(buttons);
+
+    const wasNearBottom = isNearBottom();
+    els.chat.appendChild(card);
+    if(wasNearBottom && !timeoutModeActive) els.chat.scrollTop = els.chat.scrollHeight;
+    trimOldMessages();
+  }
+  function removeAutomodHold(id){
+    const card = document.getElementById('am-' + id);
+    if(card) card.remove();
+  }
+
+  function getGreetingKeywords(){
+    return els.greetings.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  }
+  function getBlockedBots(){
+    return els.blockedBots.value.split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+  }
+  els.syncGreetingsBtn.onclick = ()=>{
+    saveConfig();
+    syncSend({ type: 'setGreetingList', words: getGreetingKeywords() });
+    els.syncGreetingsBtn.textContent = '✓ An alle gesendet!';
+    setTimeout(()=>{ els.syncGreetingsBtn.textContent = '🔄 Diese Liste an alle senden (auch Server)'; }, 2500);
+  };
+  function applyGreetingListUpdate(words){
+    const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(words || [])]));
+    els.greetings.value = merged.join(', ');
+    saveConfig();
+  }
+
+  // ---------- UI ----------
+  els.toggleSettings.onclick = ()=>{
+    const wasNearBottom = isNearBottom();
+    els.panel.classList.toggle('open');
+    if(wasNearBottom){
+      requestAnimationFrame(()=>{ els.chat.scrollTop = els.chat.scrollHeight; });
+    }
+  };
+  els.saveBtn.onclick = ()=>{
+    saveConfig();
+    els.panel.classList.remove('open');
+    requestAnimationFrame(()=>{ els.chat.scrollTop = els.chat.scrollHeight; });
+  };
+  els.resetAllBtn.onclick = ()=>{
+    if(confirm('Begrüßungs-Session bei DIR UND allen anderen mit offenem Tool (z.B. Mods) zurücksetzen?')){
+      resetGreetingsForAll();
+    }
+  };
+  function resetGreetings(){
+    // NUR lokal — wird absichtlich nicht an den Sync-Server gemeldet (das ist der "nur ich"-Reset)
+    greetedUsers = new Map();
+    persistGreeted();
+  }
+  function resetGreetingsForAll(){
+    greetedUsers = new Map();
+    persistGreeted();
+    syncSend({ type: 'resetGreetings' });
+  }
+  function toggleGreetedManually(userId){
+    if(greetedUsers.has(userId)) greetedUsers.delete(userId);
+    else greetedUsers.set(userId, Date.now());
+    persistGreeted();
+    const greetedNow = greetedUsers.has(userId);
+    syncSend({ type: greetedNow ? 'greet' : 'ungreet', userId: userId, ts: greetedUsers.get(userId) });
+    document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(userId) + '"] .status-icon').forEach(el=>{
+      el.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
+      el.innerHTML = greetedNow ? CHECK_SVG : CROSS_SVG;
+    });
+  }
+
+  // ---------- Streamstart-Erkennung + "Begrüßungen zurücksetzen?"-Popup ----------
+  function pruneGreetingsOlderThan(maxAgeMs){
+    const cutoff = Date.now() - maxAgeMs;
+    const toRemove = [];
+    greetedUsers.forEach((ts, id)=>{ if(ts < cutoff) toRemove.push(id); });
+    toRemove.forEach(id=>{
+      greetedUsers.delete(id);
+      syncSend({ type: 'ungreet', userId: id });
+      document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(id) + '"] .status-icon').forEach(el=>{
+        el.className = 'status-icon no';
+        el.innerHTML = CROSS_SVG;
+      });
+    });
+    persistGreeted();
+  }
+
+  let streamStartCountdownTimer = null;
+  let streamStartTimeoutHandle = null;
+  function openStreamStartPopup(){
+    els.streamStartBackdrop.classList.add('open');
+    let remaining = 60;
+    els.streamStartCountdown.textContent = 'Automatischer Reset in ' + remaining + ' Sek., falls du nichts machst...';
+    streamStartCountdownTimer = setInterval(()=>{
+      remaining--;
+      if(remaining > 0){
+        els.streamStartCountdown.textContent = 'Automatischer Reset in ' + remaining + ' Sek., falls du nichts machst...';
+      }
+    }, 1000);
+    streamStartTimeoutHandle = setTimeout(()=>{
+      closeStreamStartPopup();
+      pruneGreetingsOlderThan(60000);
+    }, 60000);
+  }
+  function closeStreamStartPopup(){
+    els.streamStartBackdrop.classList.remove('open');
+    if(streamStartCountdownTimer){ clearInterval(streamStartCountdownTimer); streamStartCountdownTimer = null; }
+    if(streamStartTimeoutHandle){ clearTimeout(streamStartTimeoutHandle); streamStartTimeoutHandle = null; }
+  }
+  els.streamStartResetBtn.onclick = ()=>{ closeStreamStartPopup(); pruneGreetingsOlderThan(60000); };
+  els.streamStartCancelBtn.onclick = ()=>{ closeStreamStartPopup(); };
+
+  let wasStreamLive = null; // null = noch unbekannt (erste Abfrage zählt nicht als "gerade gestartet")
+  async function pollStreamLiveStatus(){
+    if(!els.resetOnStreamStart.checked || !accessToken || !clientId || !broadcasterId || ownUserId !== broadcasterId) return;
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/streams?user_id=' + broadcasterId, {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(!res.ok) return;
+      const data = await res.json();
+      const isLive = !!(data.data && data.data.length);
+      if(wasStreamLive === false && isLive){
+        openStreamStartPopup();
+      }
+      wasStreamLive = isLive;
+    }catch(e){ /* nächster Versuch in 30s */ }
+  }
+  setInterval(pollStreamLiveStatus, 30000);
+
+  // ---------- Personen-Infokarte ----------
+  const userMessageLog = new Map(); // userId -> [{t, text}] — nur seit Tool-Start, kein voller Twitch-Verlauf
+  function logUserMessage(userId, text){
+    if(!userMessageLog.has(userId)) userMessageLog.set(userId, []);
+    const arr = userMessageLog.get(userId);
+    arr.push({ t: Date.now(), text });
+    if(arr.length > 100) arr.shift();
+  }
+  els.userCardBackdrop.onclick = (e)=>{ if(e.target === els.userCardBackdrop) closeUserCard(); };
+  function closeUserCard(){ els.userCardBackdrop.classList.remove('open'); }
+
+  async function showUserCard(userId, displayName){
+    els.userCard.innerHTML = '<button class="uc-close" onclick="document.getElementById(\'userCardBackdrop\').classList.remove(\'open\')">✕</button>'
+      + '<h3>' + escapeHtml(displayName) + '</h3><div class="uc-row">Lade Infos...</div>';
+    els.userCardBackdrop.classList.add('open');
+
+    let createdAt = '', followSince = '';
+    if(accessToken && clientId){
+      try{
+        const res = await fetch('https://api.twitch.tv/helix/users?id=' + userId, {
+          headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+        });
+        if(res.ok){ const d = await res.json(); if(d.data && d.data[0]) createdAt = d.data[0].created_at; }
+      }catch(e){}
+      if(broadcasterId){
+        try{
+          const res2 = await fetch('https://api.twitch.tv/helix/channels/followers?broadcaster_id=' + broadcasterId + '&user_id=' + userId, {
+            headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+          });
+          if(res2.ok){ const d2 = await res2.json(); if(d2.data && d2.data[0]) followSince = d2.data[0].followed_at; }
+        }catch(e){}
+      }
+    }
+
+    const tier = tierCache.get(userId);
+    const tierLabel = tier === '3000' ? 'T3' : tier === '2000' ? 'T2' : tier === '1000' ? 'T1' : '—';
+    const msgs = (userMessageLog.get(userId) || []).slice(-30).reverse();
+    const totalCount = (userMessageLog.get(userId) || []).length;
+
+    let html = '<button class="uc-close" onclick="document.getElementById(\'userCardBackdrop\').classList.remove(\'open\')">✕</button>';
+    html += '<h3>' + escapeHtml(displayName) + '</h3>';
+    html += '<div class="uc-row">Account erstellt: ' + (createdAt ? new Date(createdAt).toLocaleDateString('de-DE') : 'unbekannt (nicht eingeloggt?)') + '</div>';
+    html += '<div class="uc-row">Folgt seit: ' + (followSince ? new Date(followSince).toLocaleDateString('de-DE') : 'nicht ermittelbar / folgt nicht') + '</div>';
+    html += '<div class="uc-row">Aktuelle Sub-Stufe: ' + tierLabel + '</div>';
+    html += '<div class="uc-row">Begrüßt in dieser Session: ' + (greetedUsers.has(userId) ? 'Ja' : 'Nein') + '</div>';
+    html += '<div class="uc-msglist"><b>Nachrichten seit Tool-Start (' + totalCount + '):</b>';
+    if(msgs.length){
+      msgs.forEach(m=>{
+        html += '<div>[' + new Date(m.t).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' }) + '] ' + escapeHtml(m.text) + '</div>';
+      });
+    } else {
+      html += '<div>Keine (noch keine Nachricht seit Öffnen des Tools gesehen)</div>';
+    }
+    html += '</div>';
+    html += '<div class="uc-row" style="margin-top:8px;font-style:italic;">Kein vollständiger Twitch-Chatverlauf — nur was das Tool seit dem Start selbst mitbekommen hat.</div>';
+    els.userCard.innerHTML = html;
+  }
+
+  // ---------- Mod-Ansicht / Timeout-Tool ----------
+  els.modViewBtn.onclick = ()=>{ els.modToolbar.classList.toggle('open'); };
+  els.timeoutModeBtn.onclick = ()=>{
+    timeoutModeActive = !timeoutModeActive;
+    els.timeoutModeBtn.textContent = 'Timeout-Modus: ' + (timeoutModeActive ? 'AN' : 'AUS');
+    els.timeoutModeBtn.classList.toggle('active', timeoutModeActive);
+    document.querySelectorAll('.chat-row').forEach(r => r.classList.toggle('timeout-armed', timeoutModeActive));
+    els.timeoutStatus.textContent = timeoutModeActive ? 'Klick auf eine Chat-Zeile zum Timeouten.' : '';
+  };
+
+  let timeoutUnit = 'sec'; // 'sec' | 'min' — nur Anzeige, gespeichert/gesendet wird immer in Sekunden
+  els.timeoutUnitBtn.onclick = ()=>{
+    const current = parseFloat(els.timeoutSeconds.value) || 0;
+    if(timeoutUnit === 'sec'){
+      timeoutUnit = 'min';
+      els.timeoutSeconds.value = Math.round((current / 60) * 10) / 10;
+      els.timeoutSeconds.step = '0.5';
+      els.timeoutUnitLabel.textContent = 'Min.';
+      els.timeoutUnitBtn.textContent = '⇄ Sek.';
+    } else {
+      timeoutUnit = 'sec';
+      els.timeoutSeconds.value = Math.round(current * 60);
+      els.timeoutSeconds.step = '1';
+      els.timeoutUnitLabel.textContent = 'Sek.';
+      els.timeoutUnitBtn.textContent = '⇄ Min.';
+    }
+  };
+
+  async function executeTimeout(userId, displayName, row){
+    if(!accessToken || !broadcasterId || !ownUserId){
+      els.timeoutStatus.textContent = 'Nicht eingeloggt — kein Timeout möglich.';
+      return;
+    }
+    const raw = parseFloat(els.timeoutSeconds.value) || 0;
+    const rawSeconds = timeoutUnit === 'min' ? raw * 60 : raw;
+    const duration = Math.min(1209600, Math.max(1, Math.round(rawSeconds))); // Twitch-Limit: max. 14 Tage
+    els.timeoutStatus.textContent = 'Timeoute ' + displayName + ' (' + duration + ' Sek.) ...';
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/moderation/bans?broadcaster_id=' + broadcasterId + '&moderator_id=' + ownUserId, {
+        method: 'POST',
+        headers: {
+          'Client-Id': clientId,
+          'Authorization': 'Bearer ' + accessToken,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ data: { user_id: userId, duration: duration } })
+      });
+      if(res.ok){
+        els.timeoutStatus.textContent = '✓ ' + displayName + ' für ' + duration + ' Sek. getimeoutet.';
+        if(row) row.classList.add('timed-out');
+      } else if(res.status === 401){
+        handleAuthError();
+      } else {
+        const errBody = await res.json().catch(()=>({}));
+        els.timeoutStatus.textContent = '✕ Fehler bei ' + displayName + ': ' + (errBody.message || res.status);
+      }
+    }catch(e){
+      els.timeoutStatus.textContent = '✕ Netzwerkfehler beim Timeout von ' + displayName + '.';
+    }
+  }
+
+  function setConnStatus(on){
+    els.statusDot.classList.toggle('on', on);
+    els.connLabel.textContent = on ? 'verbunden' : 'nicht verbunden';
+  }
+  function setSyncConnStatus(on){
+    els.syncStatusDot.classList.toggle('on', on);
+    els.syncConnLabel.textContent = 'Sync: ' + (on ? 'verbunden' : 'nicht verbunden');
+  }
+  function setTierStatus(text){ els.tierStatus.textContent = 'Sub-Tier: ' + text; }
+
+  // ---------- Twitch OAuth (Implicit Grant, nur für Sub-Tier-Abfrage) ----------
+  els.loginBtn.onclick = ()=>{
+    const cid = els.clientId.value.trim();
+    if(!cid){ alert('Bitte zuerst eine Client-ID eintragen.'); return; }
+    saveConfig();
+    const redirectUri = window.location.origin + window.location.pathname;
+    const scopes = [
+      'channel:read:subscriptions',
+      'moderator:read:banned_users',
+      'moderator:manage:banned_users',
+      'moderator:read:followers',
+      'chat:read',
+      'chat:edit'
+    ].join(' ');
+    const url = 'https://id.twitch.tv/oauth2/authorize'
+      + '?client_id=' + encodeURIComponent(cid)
+      + '&redirect_uri=' + encodeURIComponent(redirectUri)
+      + '&response_type=token'
+      + '&scope=' + encodeURIComponent(scopes);
+    window.location.href = url;
+  };
+
+  function handleOAuthRedirect(){
+    if(window.location.hash.includes('access_token')){
+      const params = new URLSearchParams(window.location.hash.substring(1));
+      const token = params.get('access_token');
+      if(token){
+        accessToken = token;
+        localStorage.setItem('ligaChatOverlayToken', token);
+        history.replaceState(null, '', window.location.pathname);
+      }
+    }
+  }
+
+  async function fetchAccountInfo(){
+    if(!accessToken || !clientId){ setTierStatus('aus'); return; }
+    const channel = els.channel.value.trim().toLowerCase();
+    try{
+      // eigener Account (Streamer oder Mod, je nachdem wer sich einloggt)
+      const meRes = await fetch('https://api.twitch.tv/helix/users', {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(meRes.status === 401){ handleAuthError(); return; }
+      if(!meRes.ok){ setTierStatus('Fehler (' + meRes.status + ')'); return; }
+      const meData = await meRes.json();
+      ownUserId = meData.data[0].id;
+      ownLogin = meData.data[0].login;
+      ownDisplayName = meData.data[0].display_name || ownLogin;
+
+      // ID des eingestellten Twitch-Channels (kann von der eigenen abweichen, wenn ein Mod eingeloggt ist)
+      let channelId = ownUserId;
+      if(channel && channel !== ownLogin){
+        const chRes = await fetch('https://api.twitch.tv/helix/users?login=' + encodeURIComponent(channel), {
+          headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+        });
+        if(chRes.ok){
+          const chData = await chRes.json();
+          if(chData.data && chData.data[0]) channelId = chData.data[0].id;
+        }
+      }
+      broadcasterId = channelId;
+      isMod = (ownUserId === broadcasterId);
+      subscriptionsAvailable = isMod; // an dieser Stelle heißt isMod noch "ist Broadcaster" (USERSTATE korrigiert Mods gleich nach)
+      els.modViewBtn.style.display = isMod ? '' : 'none';
+      els.resetAllBtn.style.display = isMod ? '' : 'none';
+      els.chatModeSelect.style.display = isMod ? '' : 'none';
+      els.syncGreetingsBtn.style.display = isMod ? '' : 'none';
+      announceModStatus();
+      updateChatInputVisibility();
+
+      // Automatischer Session-Reset: einmal pro Kalendertag, nur wenn DER STREAMER SELBST sich einloggt
+      if(ownUserId === broadcasterId){
+        const today = new Date().toISOString().slice(0, 10);
+        if(localStorage.getItem('ligaChatOverlayLastAutoReset') !== today){
+          localStorage.setItem('ligaChatOverlayLastAutoReset', today);
+          resetGreetingsForAll();
+        }
+      }
+
+      await fetchChannelBadges();
+      await fetchChannelEmotes();
+      channelEmotesLoaded = true;
+      scheduleMergedHistoryRender();
+      if(subscriberBadgeTierMap.size > 0) setTierStatus('aktiv ✓');
+      else if(subscriptionsAvailable) setTierStatus('aktiv ✓ (im Chat aber nur generisches "Sub"-Badge, keine Tier-Badge-Daten im Kanal gefunden)');
+      else setTierStatus('aktiv (nur generisches "Sub"-Badge sichtbar)');
+      if(els.channel.value.trim()) connectIRC(); // Verbindung neu aufbauen, jetzt authentifiziert (zum Schreiben nötig)
+    }catch(e){ setTierStatus('Fehler'); }
+  }
+
+  function handleAuthError(){
+    accessToken = null;
+    localStorage.removeItem('ligaChatOverlayToken');
+    setTierStatus('Login abgelaufen, bitte erneut verbinden');
+    updateChatInputVisibility();
+  }
+
+  function updateChatInputVisibility(){
+    const visible = !!(accessToken && ownLogin);
+    els.chatInputBar.classList.toggle('visible', visible);
+  }
+
+  function sendChatMessage(){
+    const text = els.chatMessageInput.value.trim();
+    if(!text || !accessToken || !ownLogin) return;
+
+    const mode = els.chatModeSelect.style.display !== 'none' ? els.chatModeSelect.value : 'twitch';
+    if(mode === 'modsAndStreamer' || mode === 'modsOnly'){
+      // Mod-Chat: geht NICHT an Twitch, nur an andere offene Tool-Fenster über den Sync-Server
+      const scope = mode === 'modsOnly' ? 'mods' : 'modsAndStreamer';
+      const from = ownDisplayName || ownLogin;
+      syncSend({ type: 'modChat', from: from, text: text, scope: scope });
+      renderModChatMessage(from, text, { scope: scope });
+      els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
+      return;
+    }
+
+    if(!ws || ws.readyState !== 1) return;
+    const channel = els.channel.value.trim().toLowerCase();
+    ws.send('PRIVMSG #' + channel + ' :' + text);
+    // Twitch schickt eigene Nachrichten nicht automatisch zurück -> selbst anzeigen
+    const badges = {};
+    if(ownUserId === broadcasterId) badges.broadcaster = '1';
+    else if(isMod) badges.moderator = '1';
+    renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text });
+    els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
+  }
+  els.sendChatBtn.onclick = sendChatMessage;
+  els.chatMessageInput.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
+  });
+  els.chatMessageInput.addEventListener('input', ()=>{
+    updateEmotePreviewBubble();
+    localStorage.setItem('ligaChatOverlayDraft', els.chatMessageInput.value);
+  });
+  els.chatMessageInput.addEventListener('scroll', updateEmotePreviewBubble);
+  els.chatMessageInput.addEventListener('click', updateEmotePreviewBubble);
+
+  const emoteMeasureSpan = document.createElement('span');
+  emoteMeasureSpan.style.cssText = 'position:absolute; left:-9999px; top:-9999px; white-space:pre; font-size:13px; font-family:inherit;';
+  document.body.appendChild(emoteMeasureSpan);
+
+  const renderedEmoteBubbles = new Map(); // Emote-Name -> vorhandenes Blasen-Element (wiederverwenden statt neu bauen -> kein GIF-Neustart)
+  function updateEmotePreviewBubble(){
+    const text = els.chatMessageInput.value;
+    const wordRegex = /\S+/g;
+    const matches = [];
+    let m;
+    while((m = wordRegex.exec(text)) !== null){
+      const emote = channelEmotes.find(e => e.name === m[0]);
+      if(emote) matches.push({ emote, start: m.index, word: m[0] });
+    }
+    if(!matches.length){
+      els.emotePreviewBar.classList.remove('visible');
+      els.emotePreviewBar.innerHTML = '';
+      renderedEmoteBubbles.clear();
+      return;
+    }
+    const inputPaddingLeft = 8; // muss zu #chatInputBar input { padding: 6px 8px } passen
+    const inputLeftEdge = els.chatMessageInput.offsetLeft + inputPaddingLeft;
+    const inputRightEdge = els.chatMessageInput.offsetLeft + els.chatMessageInput.offsetWidth - inputPaddingLeft;
+    const currentNames = new Set();
+    matches.forEach(match=>{
+      currentNames.add(match.emote.name);
+      emoteMeasureSpan.textContent = text.substring(0, match.start);
+      const preWidth = emoteMeasureSpan.offsetWidth;
+      emoteMeasureSpan.textContent = match.word;
+      const wordWidth = emoteMeasureSpan.offsetWidth;
+      // scrollLeft abziehen: wenn der Text länger als das Feld ist, scrollt das Feld intern nach links weg
+      const left = inputLeftEdge + preWidth - els.chatMessageInput.scrollLeft + (wordWidth / 2);
+      const visible = left >= inputLeftEdge && left <= inputRightEdge;
+
+      let bubble = renderedEmoteBubbles.get(match.emote.name);
+      if(!bubble){
+        bubble = document.createElement('div');
+        bubble.className = 'epb-bubble';
+        const img = document.createElement('img');
+        img.src = match.emote.url;
+        img.alt = match.emote.name;
+        img.onerror = ()=>{ img.onerror = null; img.src = match.emote.staticUrl; };
+        bubble.appendChild(img);
+        els.emotePreviewBar.appendChild(bubble);
+        renderedEmoteBubbles.set(match.emote.name, bubble);
+      }
+      bubble.style.left = left + 'px'; // nur Position aktualisieren, Bild bleibt dasselbe Element
+      bubble.style.display = visible ? '' : 'none'; // aus dem Feld rausgescrollte Wörter -> Blase ausblenden statt falsch schweben lassen
+    });
+    // Blasen für Emotes entfernen, die nicht mehr im Text stehen
+    renderedEmoteBubbles.forEach((bubble, name)=>{
+      if(!currentNames.has(name)){
+        bubble.remove();
+        renderedEmoteBubbles.delete(name);
+      }
+    });
+    els.emotePreviewBar.classList.add('visible');
+  }
+
+  function buildModChatMessageHtml(text){
+    const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return text.split(/(\s+)/).map(tok=>{
+      if(/^\s*$/.test(tok)) return tok;
+      const emote = (channelEmotes || []).find(e => e.name === tok);
+      if(emote){
+        return '<img class="chat-emote" src="' + emote.url + '" alt="' + esc(tok) + '" title="' + esc(tok) + '">';
+      }
+      return esc(tok);
+    }).join('');
+  }
+
+  function renderModChatMessage(from, text, opts){
+    opts = opts || {};
+    const row = document.createElement('div');
+    row.className = 'modchat-row' + (opts.scope === 'mods' ? ' modchat-only' : '');
+    const tag = document.createElement('span');
+    tag.className = 'mc-tag';
+    tag.textContent = (opts.scope === 'mods' ? '2️⃣🤫 ' : '1️⃣🔒 ') + from + ':';
+    row.appendChild(tag);
+    const textEl = document.createElement('span');
+    textEl.className = 'mc-text';
+    textEl.innerHTML = buildModChatMessageHtml(text);
+    row.appendChild(textEl);
+
+    const wasNearBottom = isNearBottom();
+    els.chat.appendChild(row);
+    if(wasNearBottom && !timeoutModeActive) els.chat.scrollTop = els.chat.scrollHeight;
+    trimOldMessages();
+    // Bewusst KEIN lokales Speichern hier — der Server merkt sich Mod-Chat-Verlauf schon zentral
+    // und schickt ihn beim Verbinden mit; doppeltes lokales Speichern hat sonst zu Duplikaten bei F5 geführt.
+  }
+
+  // ---------- Stream-Vorschau (einblendbar, per Ziehen an der Unterkante skalierbar) ----------
+  function loadStreamIframe(){
+    const channel = els.channel.value.trim().toLowerCase();
+    if(!channel) return;
+    const parent = window.location.hostname || 'localhost';
+    els.streamFrame.src = 'https://player.twitch.tv/?channel=' + encodeURIComponent(channel)
+      + '&parent=' + encodeURIComponent(parent) + '&muted=true';
+  }
+
+  // Video immer im echten 16:9 halten (schwarze Balken statt Verzerren), egal wie das Fenster gezogen wird
+  function fitStreamAspect(){
+    const w = els.streamContainer.clientWidth;
+    const h = els.streamContainer.clientHeight;
+    if(!w || !h) return;
+    let fw, fh;
+    if(w / h > 16 / 9){ fh = h; fw = h * 16 / 9; }
+    else { fw = w; fh = w * 9 / 16; }
+    els.streamFrame.style.width = fw + 'px';
+    els.streamFrame.style.height = fh + 'px';
+    els.streamFrame.style.left = ((w - fw) / 2) + 'px';
+    els.streamFrame.style.top = ((h - fh) / 2) + 'px';
+  }
+  if(window.ResizeObserver){
+    new ResizeObserver(fitStreamAspect).observe(els.streamContainer);
+  }
+  window.addEventListener('resize', fitStreamAspect);
+  els.streamViewBtn.onclick = ()=>{
+    const open = els.streamContainer.classList.toggle('open');
+    localStorage.setItem('ligaChatOverlayStreamOpen', open ? '1' : '0');
+    if(open) loadStreamIframe(); else els.streamFrame.src = '';
+  };
+
+  // ---------- Layout: Stream Oben/Links/Rechts, Events-Liste Links/Rechts ----------
+  function applyLayout(){
+    const streamPos = els.streamPosition.value; // top | left | right
+    const eventPos = els.eventPosition.value;   // left | right | top | bottom
+
+    // --- Events-Liste ---
+    els.eventPanel.classList.remove('horizontal', 'bottom-mode');
+    els.eventPanel.style.order = '';
+    if(eventPos === 'top' || eventPos === 'bottom'){
+      els.eventPanel.classList.add('horizontal');
+      if(eventPos === 'bottom') els.eventPanel.classList.add('bottom-mode');
+      els.eventPanel.style.order = eventPos === 'top' ? '-1' : '1';
+      if(els.eventPanel.parentElement !== els.mainArea){
+        els.mainArea.appendChild(els.eventPanel);
+      }
+    } else {
+      els.eventPanel.style.order = eventPos === 'right' ? '2' : '-2';
+      if(els.eventPanel.parentElement !== els.streamChatRow){
+        els.streamChatRow.insertBefore(els.eventPanel, els.streamChatRow.firstChild);
+      }
+    }
+
+    // --- Stream ---
+    if(streamPos === 'top'){
+      els.streamContainer.classList.remove('side-panel', 'side-right');
+      els.streamContainer.style.order = '';
+      if(els.streamContainer.parentElement !== els.app){
+        els.app.insertBefore(els.streamContainer, els.mainArea);
+      }
+    } else {
+      els.streamContainer.classList.add('side-panel');
+      els.streamContainer.classList.toggle('side-right', streamPos === 'right');
+      els.streamContainer.style.order = streamPos === 'left' ? '-3' : '3';
+      if(els.streamContainer.parentElement !== els.streamChatRow){
+        els.streamChatRow.insertBefore(els.streamContainer, els.streamChatRow.firstChild);
+      }
+    }
+    // gespeicherte Breite (Seiten-Modus) bzw. Höhe (Oben-Modus) wieder anwenden
+    if(streamPos === 'top'){
+      const h = localStorage.getItem('ligaChatOverlayStreamHeight');
+      if(h) els.streamContainer.style.height = h;
+      els.streamContainer.style.width = '';
+    } else {
+      const w = localStorage.getItem('ligaChatOverlayStreamWidth');
+      if(w) els.streamContainer.style.width = w;
+      els.streamContainer.style.height = '';
+    }
+  }
+  els.streamPosition.onchange = ()=>{ applyLayout(); saveConfig(); };
+  els.eventPosition.onchange = ()=>{ applyLayout(); saveConfig(); };
+
+  els.stream169Btn.onclick = ()=>{
+    const rect = els.streamContainer.getBoundingClientRect();
+    if(els.streamPosition.value === 'top'){
+      const newHeight = Math.round(rect.width * 9 / 16);
+      els.streamContainer.style.height = newHeight + 'px';
+      localStorage.setItem('ligaChatOverlayStreamHeight', newHeight + 'px');
+    } else {
+      const newWidth = Math.round(rect.height * 16 / 9);
+      els.streamContainer.style.width = newWidth + 'px';
+      localStorage.setItem('ligaChatOverlayStreamWidth', newWidth + 'px');
+    }
+  };
+
+  // Eigener Ziehgriff statt Browser-"resize" — sonst schluckt der eingebettete Player die Maus beim Ziehen.
+  // Richtung passt sich automatisch an: Höhe ziehen (Oben-Modus) oder Breite ziehen (Seiten-Modus).
+  (function setupStreamResize(){
+    let dragging = false, startPos = 0, startSize = 0;
+    els.streamResizeHandle.addEventListener('mousedown', (e)=>{
+      dragging = true;
+      const horizontal = els.streamContainer.classList.contains('side-panel');
+      startPos = horizontal ? e.clientX : e.clientY;
+      startSize = horizontal ? els.streamContainer.getBoundingClientRect().width : els.streamContainer.getBoundingClientRect().height;
+      els.streamResizeHandle.classList.add('dragging');
+      els.streamDragOverlay.classList.add('active'); // fängt die Maus ab, damit der iframe sie nicht "schluckt"
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e)=>{
+      if(!dragging) return;
+      const horizontal = els.streamContainer.classList.contains('side-panel');
+      if(horizontal){
+        const onRight = els.streamContainer.classList.contains('side-right');
+        const delta = onRight ? (startPos - e.clientX) : (e.clientX - startPos);
+        let newWidth = startSize + delta;
+        newWidth = Math.max(220, Math.min(window.innerWidth * 0.6, newWidth));
+        els.streamContainer.style.width = newWidth + 'px';
+      } else {
+        const delta = e.clientY - startPos;
+        let newHeight = startSize + delta;
+        newHeight = Math.max(120, Math.min(window.innerHeight * 0.9, newHeight));
+        els.streamContainer.style.height = newHeight + 'px';
+      }
+    });
+    document.addEventListener('mouseup', ()=>{
+      if(!dragging) return;
+      dragging = false;
+      els.streamResizeHandle.classList.remove('dragging');
+      els.streamDragOverlay.classList.remove('active');
+      if(els.streamContainer.classList.contains('side-panel')){
+        localStorage.setItem('ligaChatOverlayStreamWidth', els.streamContainer.style.width);
+      } else {
+        localStorage.setItem('ligaChatOverlayStreamHeight', els.streamContainer.style.height);
+      }
+    });
+  })();
+
+  if(localStorage.getItem('ligaChatOverlayStreamOpen') === '1'){
+    els.streamContainer.classList.add('open');
+    loadStreamIframe();
+  }
+
+  function queueTierLookup(userId){
+    if(tierCache.has(userId) || pendingLookups.has(userId)) return;
+    pendingLookups.add(userId);
+    if(!batchTimer) batchTimer = setTimeout(runBatch, 2500);
+  }
+
+  async function runBatch(){
+    batchTimer = null;
+    // Twitch erlaubt die Sub-Listen-Abfrage nur dem Streamer selbst (nicht Mods, auch nicht mit passender Berechtigung) —
+    // bei Mods würde jeder Versuch fehlschlagen und wurde bisher fälschlich als "ausgeloggt" behandelt.
+    if(!accessToken || !broadcasterId || ownUserId !== broadcasterId){ pendingLookups.clear(); return; }
+    const ids = Array.from(pendingLookups).slice(0,100);
+    ids.forEach(id => pendingLookups.delete(id));
+    if(!ids.length) return;
+    const params = new URLSearchParams();
+    params.set('broadcaster_id', broadcasterId);
+    ids.forEach(id => params.append('user_id', id));
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/subscriptions?' + params.toString(), {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(res.ok){
+        const data = await res.json();
+        const found = new Set();
+        (data.data || []).forEach(sub=>{
+          tierCache.set(sub.user_id, sub.tier);
+          syncSend({ type: 'setTier', userId: sub.user_id, tier: sub.tier });
+          found.add(sub.user_id);
+        });
+        ids.forEach(id => { if(!found.has(id)) tierCache.set(id, null); });
+        updateRenderedTiers(ids);
+      } else if(res.status === 401){
+        handleAuthError();
+      }
+    }catch(e){ /* still be resilient, next chat message retries */ }
+  }
+
+  function updateRenderedTiers(ids){
+    ids.forEach(id=>{
+      const tier = tierCache.get(id);
+      document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(id) + '"] .tier-badge').forEach(el=>{
+        applyTierBadge(el, tier);
+      });
+    });
+  }
+  function applyTierBadge(el, tier){
+    el.classList.remove('tier-1','tier-2','tier-3','tier-sub');
+    if(tier === '1000'){ el.textContent='T1'; el.classList.add('tier-1'); }
+    else if(tier === '2000'){ el.textContent='T2'; el.classList.add('tier-2'); }
+    else if(tier === '3000'){ el.textContent='T3'; el.classList.add('tier-3'); }
+    else { el.textContent='Sub'; el.classList.add('tier-sub'); }
+  }
+
+  // ---------- Twitch IRC (anonym, nur lesend) ----------
+  els.connectBtn.onclick = ()=>{ saveConfig(); connectIRC(); };
+
+  function connectIRC(){
+    const channel = els.channel.value.trim().toLowerCase().replace(/^#/, '');
+    if(!channel) return;
+    if(ws){
+      ws.onclose = null; // verhindert, dass die ALTE Verbindung beim Schließen selbst nochmal einen Reconnect auslöst
+      try{ ws.close(); }catch(e){}
+    }
+    ws = new WebSocket('wss://irc-ws.chat.twitch.tv:443');
+    let recvBuffer = ''; // Nachrichten können auf mehrere WebSocket-Pakete verteilt ankommen -> zusammensetzen statt jedes Paket isoliert zu parsen
+    ws.onopen = ()=>{
+      ws.send('CAP REQ :twitch.tv/tags twitch.tv/commands twitch.tv/membership');
+      if(accessToken && ownLogin){
+        ws.send('PASS oauth:' + accessToken);
+        ws.send('NICK ' + ownLogin);
+      } else {
+        const nick = 'justinfan' + Math.floor(Math.random()*99999);
+        ws.send('PASS SCHMOOPIIE');
+        ws.send('NICK ' + nick);
+      }
+      ws.send('JOIN #' + channel);
+      setConnStatus(true);
+      els.emptyHint.style.display = 'none';
+    };
+    ws.onmessage = (evt)=>{
+      recvBuffer += evt.data;
+      const lines = recvBuffer.split('\r\n');
+      recvBuffer = lines.pop(); // letztes, evtl. unvollständiges Fragment für den nächsten Empfang aufheben
+      lines.forEach(line=>{
+        if(!line) return;
+        if(line.startsWith('PING')){ ws.send('PONG :tmi.twitch.tv'); return; }
+        if(line.indexOf('PRIVMSG') !== -1){ handlePrivmsg(line); return; }
+        if(line.indexOf('USERSTATE') !== -1){ handleUserState(line); return; }
+        if(line.indexOf('USERNOTICE') !== -1){ handleUserNotice(line); return; }
+        if(line.indexOf('NOTICE') !== -1){ handleNotice(line); return; }
+      });
+    };
+    ws.onclose = ()=>{ setConnStatus(false); setTimeout(()=>{ if(els.channel.value.trim()) connectIRC(); }, 4000); };
+    ws.onerror = ()=>{ try{ ws.close(); }catch(e){} };
+  }
+
+  function parseTags(tagStr){
+    const tags = {};
+    tagStr.split(';').forEach(pair=>{
+      const idx = pair.indexOf('=');
+      if(idx === -1) return;
+      tags[pair.substring(0,idx)] = pair.substring(idx+1);
+    });
+    return tags;
+  }
+
+  function handleNotice(line){
+    const msgIdx = line.indexOf(' :');
+    const text = msgIdx !== -1 ? line.substring(msgIdx + 2) : line;
+    console.warn('Twitch NOTICE:', text);
+    if(/authentication failed|improperly formatted auth|login unsuccessful/i.test(text)){
+      els.connLabel.textContent = 'Login-Fehler: ' + text;
+      handleAuthError();
+      if(ws){ try{ ws.close(); }catch(e){} }
+    }
+  }
+
+  function handleUserNotice(line){
+    // Sub/Resub/Gift-Sub-Events verraten die Tier-Stufe öffentlich für jeden im Chat —
+    // dadurch bekommen auch Mods (ohne eigenes Streamer-Login) echte T1/T2/T3-Daten für frisch (ge)abonnierte Leute
+    if(!line.startsWith('@')) return;
+    const spaceIdx = line.indexOf(' ');
+    const tags = parseTags(line.substring(1, spaceIdx));
+    const msgId = tags['msg-id'];
+    let targetUserId = null;
+    if(msgId === 'sub' || msgId === 'resub'){
+      targetUserId = tags['user-id'];
+    } else if(msgId === 'subgift' || msgId === 'anonsubgift'){
+      targetUserId = tags['msg-param-recipient-id'];
+    }
+    const tier = tags['msg-param-sub-plan'];
+    if(targetUserId && (tier === '1000' || tier === '2000' || tier === '3000')){
+      tierCache.set(targetUserId, tier);
+      syncSend({ type: 'setTier', userId: targetUserId, tier: tier });
+      updateRenderedTiers([targetUserId]);
+    }
+
+    // Einzelne (nicht per Massen-Gift-Funktion verschenkte) Gifts selbst zusammenfassen,
+    // damit 5+ schnelle Einzel-Gifts derselben Person nicht als 5+ Zeilen auftauchen
+    if((msgId === 'subgift' || msgId === 'anonsubgift') && !tags['msg-param-community-gift-id']){
+      const gifterName = msgId === 'anonsubgift' ? 'Jemand' : (tags['display-name'] || tags['login'] || 'Jemand');
+      const tierWordVal = tierWord(tags['msg-param-sub-plan']);
+      const tierLabel = tierWordVal === 'Prime' ? 'Prime' : ('T' + tierWordVal);
+      bumpGiftGroup(gifterName, tierLabel);
+      return;
+    }
+
+    // Eigener deutscher Text statt Twitchs englischem system-msg — als Alert-Zeile anzeigen
+    const alertText = buildGermanAlertText(tags);
+    if(alertText){
+      const rest = line.substring(spaceIdx + 1);
+      const noticeIdx = rest.indexOf('USERNOTICE');
+      let extraMsg = '';
+      if(noticeIdx !== -1){
+        const afterNotice = rest.substring(noticeIdx);
+        const msgIdx = afterNotice.indexOf(' :');
+        if(msgIdx !== -1) extraMsg = afterNotice.substring(msgIdx + 2);
+      }
+      const extraEmotes = parseEmoteTag(tags['emotes'] || '');
+      renderAlert(alertText, extraMsg, extraEmotes);
+    }
+  }
+
+  function tierWord(planTag){
+    if(planTag === 'Prime') return 'Prime';
+    if(planTag === '2000') return '2';
+    if(planTag === '3000') return '3';
+    return '1';
+  }
+
+  function buildGermanAlertText(tags){
+    const name = tags['display-name'] || tags['login'] || 'Jemand';
+    const tier = tierWord(tags['msg-param-sub-plan']);
+    const tierLabel = tier === 'Prime' ? 'Prime' : ('Tier ' + tier);
+    switch(tags['msg-id']){
+      case 'sub':
+        return name + ' hat gerade mit ' + tierLabel + ' abonniert! 🎉';
+      case 'resub': {
+        const cumulative = tags['msg-param-cumulative-months'] || tags['msg-param-months'] || '?';
+        const streak = tags['msg-param-streak-months'];
+        const streakPart = streak && streak !== '0' ? ' (' + streak + ' Monate am Stück)' : '';
+        return name + ' ist seit ' + cumulative + ' Monaten dabei' + streakPart + ' — ' + tierLabel + '! 🎉';
+      }
+      case 'subgift':
+        // Teil einer Massen-Gift-Welle? -> nicht einzeln anzeigen, das übernimmt die "submysterygift"-Sammelzeile
+        if(tags['msg-param-community-gift-id']) return null;
+        return name + ' hat ' + (tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
+      case 'anonsubgift':
+        if(tags['msg-param-community-gift-id']) return null;
+        return 'Jemand hat ' + (tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
+      case 'submysterygift': {
+        const count = tags['msg-param-mass-gift-count'] || '?';
+        const total = tags['msg-param-sender-count'];
+        return name + ' verschenkt ' + count + ' ' + tierLabel + ' Abos an die Community!' + (total ? ' (insgesamt ' + total + ' im Kanal verschenkt)' : '') + ' 🎁';
+      }
+      case 'giftpaidupgrade':
+        return name + ' hat sein geschenktes Abo in ein bezahltes umgewandelt! 💛';
+      case 'anongiftpaidupgrade':
+        return name + ' hat ein anonym geschenktes Abo in ein bezahltes umgewandelt! 💛';
+      case 'primepaidupgrade':
+        return name + ' hat von Prime auf ' + tierLabel + ' umgestellt! 💛';
+      case 'raid':
+        return name + ' raidet mit ' + (tags['msg-param-viewerCount'] || '?') + ' Zuschauern rein! 🚀';
+      case 'bitsbadgetier':
+        return name + ' hat die ' + (tags['msg-param-threshold'] || '') + '-Bits-Marke geknackt! 💎';
+      default:
+        return unescapeIrcTagValue(tags['system-msg']); // Fallback: Twitchs Original-Text (Englisch), falls Typ unbekannt
+    }
+  }
+
+  function unescapeIrcTagValue(v){
+    if(!v) return '';
+    return v.replace(/\\s/g, ' ').replace(/\\:/g, ';').replace(/\\\\/g, '\\').replace(/\\r/g, '').replace(/\\n/g, ' ');
+  }
+
+  function renderAlert(text, extraMsg, extraEmotes, opts){
+    opts = opts || {};
+    const ts = opts.ts || Date.now();
+    addEventEntry(text, ts);
+    if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
+      syncSend({ type: 'historyAdd', item: { t: 'alert', text: text, ts: ts } });
+    }
+    if(els.eventPanel.classList.contains('open')) return; // Eventliste an -> Subs/Gifts/Raids nicht zusätzlich im Chat, kein Spam
+    insertAlertChatRow(text, extraMsg, extraEmotes);
+  }
+
+  function insertAlertChatRow(text, extraMsg, extraEmotes){
+    const row = document.createElement('div');
+    row.className = 'chat-row alert-row';
+    const icon = document.createElement('span');
+    icon.className = 'alert-icon';
+    icon.textContent = '★';
+    row.appendChild(icon);
+    const textSpan = document.createElement('span');
+    textSpan.className = 'alert-text';
+    let html = escapeHtml(text);
+    if(extraMsg) html += '  „' + buildMessageHtml(extraMsg, extraEmotes) + '"';
+    textSpan.innerHTML = html;
+    row.appendChild(textSpan);
+
+    const wasNearBottom = isNearBottom();
+    els.chat.appendChild(row);
+    if(wasNearBottom && !timeoutModeActive) els.chat.scrollTop = els.chat.scrollHeight;
+    trimOldMessages();
+
+    messageHistory.push(row.outerHTML);
+    if(messageHistory.length > MAX_ROWS) messageHistory.shift();
+    persistHistory();
+  }
+
+  // ---------- Event-Liste (kompakte Übersicht: Subs/Resubs/Gifts/Raids/Bits/Follows) ----------
+  const MAX_EVENT_ENTRIES = 150;
+  els.eventPanelBtn.onclick = ()=>{ els.eventPanel.classList.toggle('open'); };
+
+  function formatEventTime(ts){
+    const d = new Date(ts);
+    return d.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit' }) + ' '
+         + d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function addEventEntry(text, ts){
+    ts = ts || Date.now();
+    const entry = document.createElement('div');
+    entry.className = 'event-entry';
+    entry.textContent = text;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'ee-time';
+    timeEl.textContent = formatEventTime(ts);
+    entry.appendChild(timeEl);
+    els.eventPanel.insertBefore(entry, els.eventPanel.firstChild);
+    while(els.eventPanel.children.length > MAX_EVENT_ENTRIES){
+      els.eventPanel.removeChild(els.eventPanel.lastChild);
+    }
+  }
+
+  // Einzel-Gifts (kein offizielles Massen-Gift) derselben Person kurz sammeln statt spammen
+  const pendingGiftGroups = new Map(); // gifterName -> { count, el, tierLabel, timeout }
+  const GIFT_GROUP_WINDOW_MS = 8000;
+  function bumpGiftGroup(gifterName, tierLabel){
+    let g = pendingGiftGroups.get(gifterName);
+    if(!g){
+      const el = document.createElement('div');
+      el.className = 'event-entry';
+      els.eventPanel.insertBefore(el, els.eventPanel.firstChild);
+      g = { count: 0, el: el, tierLabel: tierLabel };
+      pendingGiftGroups.set(gifterName, g);
+    }
+    g.count++;
+    g.el.textContent = gifterName + ' verschenkt gerade ' + g.tierLabel + '-Abos... (' + g.count + ') 🎁';
+    if(g.timeout) clearTimeout(g.timeout);
+    g.timeout = setTimeout(()=> finalizeGiftGroup(gifterName), GIFT_GROUP_WINDOW_MS);
+  }
+  function finalizeGiftGroup(gifterName){
+    const g = pendingGiftGroups.get(gifterName);
+    if(!g) return;
+    pendingGiftGroups.delete(gifterName);
+    const ts = Date.now();
+    const finalText = gifterName + ' hat ' + g.count + ' ' + (g.count === 1 ? 'Abo' : 'Abos') + ' verschenkt! 🎁';
+    g.el.textContent = finalText;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'ee-time';
+    timeEl.textContent = formatEventTime(ts);
+    g.el.appendChild(timeEl);
+    while(els.eventPanel.children.length > MAX_EVENT_ENTRIES){
+      els.eventPanel.removeChild(els.eventPanel.lastChild);
+    }
+    if(ownUserId && ownUserId === broadcasterId){
+      syncSend({ type: 'historyAdd', item: { t: 'alert', text: finalText, ts: ts } });
+    }
+    if(!els.eventPanel.classList.contains('open')){
+      insertAlertChatRow(finalText, null, null);
+    }
+  }
+
+
+  function handleUserState(line){
+    // Twitchs eigene, verlässliche Statusmeldung: nur bei authentifizierter Verbindung sinnvoll gefüllt
+    if(!line.startsWith('@')) return;
+    const spaceIdx = line.indexOf(' ');
+    const tags = parseTags(line.substring(1, spaceIdx));
+    const badges = tags['badges'] || '';
+    const nowMod = tags['mod'] === '1' || badges.indexOf('moderator') !== -1 || badges.indexOf('broadcaster') !== -1;
+    if(nowMod !== isMod){
+      isMod = nowMod;
+      els.modViewBtn.style.display = isMod ? '' : 'none';
+      els.resetAllBtn.style.display = isMod ? '' : 'none';
+      els.chatModeSelect.style.display = isMod ? '' : 'none';
+      els.syncGreetingsBtn.style.display = isMod ? '' : 'none';
+      announceModStatus();
+    }
+  }
+
+  function handlePrivmsg(line){
+    let tagStr = '', rest = line;
+    if(line.startsWith('@')){
+      const spaceIdx = line.indexOf(' ');
+      tagStr = line.substring(1, spaceIdx);
+      rest = line.substring(spaceIdx + 1);
+    }
+    const tags = parseTags(tagStr);
+    const loginMatch = rest.match(/^:([^!]+)!/);
+    const login = (loginMatch ? loginMatch[1] : (tags['display-name'] || '')).toLowerCase();
+    if(getBlockedBots().includes(login)) return; // Bot-Nachricht -> komplett ignorieren
+    const privIdx = rest.indexOf('PRIVMSG');
+    const afterPriv = rest.substring(privIdx);
+    const msgIdx = afterPriv.indexOf(' :');
+    if(msgIdx === -1) return;
+    const message = afterPriv.substring(msgIdx + 2);
+
+    const displayName = tags['display-name'] || 'unbekannt';
+    const userId = tags['user-id'] || displayName;
+    const color = tags['color'] && tags['color'] !== '' ? tags['color'] : '#c9a227';
+    const badges = {};
+    (tags['badges'] || '').split(',').forEach(b=>{
+      const parts = b.split('/');
+      if(parts[0]) badges[parts[0]] = parts[1];
+    });
+
+    if(message.trim() === GREETING_RESET_COMMAND){
+      // unsichtbarer Reset-Befehl -> nur ausführen wenn von Streamer/Mod, nie anzeigen
+      if(badges.broadcaster || badges.moderator) resetGreetings();
+      return;
+    }
+
+    const emotes = parseEmoteTag(tags['emotes'] || '');
+    applyBadgeTier(userId, badges);
+    const cleaned = stripActionWrapper(message, emotes);
+    if(tags['bits'] && parseInt(tags['bits'], 10) > 0){
+      addEventEntry(displayName + ' hat ' + tags['bits'] + ' Bits gecheert 💎');
+    }
+    renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes, messageId: tags['id'] });
+  }
+
+  // ---------- "Unter Beobachtung" (Suspicious User) — nur für Mods sichtbar, kommt vom Server ----------
+  const pendingSuspiciousIds = new Set(); // Nachrichten-IDs, deren Zeile noch nicht existiert, wenn das Flag ankommt
+  function applySuspiciousFlag(row){
+    if(row.classList.contains('suspicious-row')) return;
+    row.classList.add('suspicious-row');
+    const badge = document.createElement('span');
+    badge.className = 'suspicious-badge';
+    badge.textContent = '🛡 Unter Beobachtung';
+    row.insertBefore(badge, row.firstChild);
+  }
+
+  const subscriberBadgeTierMap = new Map(); // Badge-Versions-ID (aus dem "badges"-Tag) -> '1000'|'2000'|'3000'
+
+  async function fetchChannelBadges(){
+    // Öffentliche Twitch-Schnittstelle, NICHT auf den Streamer beschränkt — funktioniert auch für Mods.
+    // Liefert u.a. den echten Titel jeder Sub-Badge-Version (z.B. "Tier 3 Subscriber"), daraus lesen wir die Stufe.
+    if(!accessToken || !clientId || !broadcasterId) return;
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/chat/badges?broadcaster_id=' + broadcasterId, {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(!res.ok) return;
+      const data = await res.json();
+      const subSet = (data.data || []).find(s => s.set_id === 'subscriber');
+      if(!subSet) return;
+      subscriberBadgeTierMap.clear();
+      subSet.versions.forEach(v=>{
+        const title = (v.title || '').toLowerCase();
+        const n = parseInt(v.id, 10);
+        let tier = '1000';
+        if(title.indexOf('tier 3') !== -1 || (!isNaN(n) && n >= 3000)) tier = '3000';
+        else if(title.indexOf('tier 2') !== -1 || (!isNaN(n) && n >= 2000)) tier = '2000';
+        subscriberBadgeTierMap.set(v.id, tier);
+      });
+      console.log('Sub-Badge-Versionen (zur Kontrolle):', subSet.versions.map(v=>({ id:v.id, title:v.title, ermittelteTier:subscriberBadgeTierMap.get(v.id) })));
+    }catch(e){ /* egal, dann bleibt's beim generischen "Sub"-Badge */ }
+  }
+
+  // ---------- Channel-Emote-Picker (nur eure eigenen Emotes, keine globalen Twitch-Emotes) ----------
+  let channelEmotes = [];
+  async function fetchChannelEmotes(){
+    if(!accessToken || !clientId || !broadcasterId) return;
+    try{
+      const res = await fetch('https://api.twitch.tv/helix/chat/emotes?broadcaster_id=' + broadcasterId, {
+        headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
+      });
+      if(!res.ok) return;
+      const data = await res.json();
+      channelEmotes = (data.data || []).map(e=>{
+        const animated = Array.isArray(e.format) && e.format.indexOf('animated') !== -1;
+        const animatedUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + e.id + '/animated/dark/2.0';
+        const staticUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + e.id + '/static/dark/2.0';
+        let category = 'Sonstige';
+        if(e.emote_type === 'follower') category = 'Follower-Emotes';
+        else if(e.emote_type === 'bitstier') category = 'Bit-Emotes';
+        else if(e.emote_type === 'subscriptions'){
+          category = e.tier === '3000' ? 'Tier 3' : e.tier === '2000' ? 'Tier 2' : 'Tier 1';
+        }
+        return { name: e.name, url: animated ? animatedUrl : staticUrl, staticUrl, category };
+      });
+      renderEmotePicker();
+    }catch(e){ /* Picker bleibt dann einfach leer */ }
+  }
+  const EMOTE_CATEGORY_ORDER = ['Tier 1', 'Tier 2', 'Tier 3', 'Follower-Emotes', 'Bit-Emotes', 'Sonstige'];
+  function renderEmotePicker(){
+    const query = els.emoteSearchInput.value.trim().toLowerCase();
+    const filtered = query ? channelEmotes.filter(e => e.name.toLowerCase().includes(query)) : channelEmotes;
+    els.emoteResultsContainer.innerHTML = '';
+    if(!channelEmotes.length){
+      const empty = document.createElement('div');
+      empty.className = 'ep-empty';
+      empty.textContent = 'Keine Channel-Emotes gefunden.';
+      els.emoteResultsContainer.appendChild(empty);
+      return;
+    }
+    if(!filtered.length){
+      const empty = document.createElement('div');
+      empty.className = 'ep-empty';
+      empty.textContent = 'Kein Emote passt zu "' + query + '".';
+      els.emoteResultsContainer.appendChild(empty);
+      return;
+    }
+    EMOTE_CATEGORY_ORDER.forEach(cat=>{
+      const emotesInCat = filtered.filter(e => e.category === cat);
+      if(!emotesInCat.length) return;
+      const header = document.createElement('div');
+      header.className = 'ep-category';
+      header.textContent = cat;
+      els.emoteResultsContainer.appendChild(header);
+      const grid = document.createElement('div');
+      grid.className = 'ep-grid';
+      emotesInCat.forEach(em=>{
+        const img = document.createElement('img');
+        img.src = em.url;
+        img.alt = em.name;
+        img.title = em.name;
+        img.loading = 'lazy';
+        img.onerror = ()=>{ img.onerror = null; img.src = em.staticUrl; };
+        img.onclick = ()=>{
+          const current = els.chatMessageInput.value;
+          const sep = (current && !current.endsWith(' ')) ? ' ' : '';
+          els.chatMessageInput.value = current + sep + em.name + ' ';
+          els.chatMessageInput.focus();
+        };
+        grid.appendChild(img);
+      });
+      els.emoteResultsContainer.appendChild(grid);
+    });
+  }
+  els.emoteSearchInput.addEventListener('input', renderEmotePicker);
+  els.emoteSearchInput.addEventListener('click', (e)=> e.stopPropagation());
+  els.emotePickerBtn.onclick = (e)=>{
+    e.stopPropagation();
+    els.emotePickerPopup.classList.toggle('open');
+  };
+  document.addEventListener('click', (e)=>{
+    if(els.emotePickerPopup.classList.contains('open') && !els.emotePickerPopup.contains(e.target) && e.target !== els.emotePickerBtn){
+      els.emotePickerPopup.classList.remove('open');
+    }
+  });
+
+  function applyBadgeTier(userId, badges){
+    if(!badges.subscriber) return;
+    const tier = subscriberBadgeTierMap.get(badges.subscriber);
+    if(!tier) return;
+    const existing = tierCache.get(userId);
+    if(existing === undefined || existing === null){
+      tierCache.set(userId, tier);
+      syncSend({ type: 'setTier', userId: userId, tier: tier });
+      updateRenderedTiers([userId]);
+    }
+  }
+
+  function stripActionWrapper(message, emotes){
+    // /me-Nachrichten (z.B. von Bots) kommen als "\x01ACTION text\x01" — Positionen entsprechend verschieben
+    const ACTION_PREFIX = '\u0001ACTION ';
+    if(message.startsWith(ACTION_PREFIX) && message.endsWith('\u0001')){
+      const offset = ACTION_PREFIX.length;
+      const stripped = message.slice(offset, -1);
+      const adjusted = (emotes || [])
+        .map(em => ({ id: em.id, start: em.start - offset, end: em.end - offset }))
+        .filter(em => em.start >= 0 && em.end < stripped.length)
+        .map(em => ({ id: em.id, start: em.start + 2, end: em.end + 2 })); // +2 wegen vorangestelltem "* "
+      return { message: '* ' + stripped, emotes: adjusted };
+    }
+    return { message, emotes: emotes || [] };
+  }
+
+  function parseEmoteTag(tag){
+    if(!tag) return [];
+    const result = [];
+    tag.split('/').forEach(part=>{
+      const sepIdx = part.indexOf(':');
+      if(sepIdx === -1) return;
+      const id = part.substring(0, sepIdx);
+      const ranges = part.substring(sepIdx + 1);
+      ranges.split(',').forEach(r=>{
+        const dashIdx = r.indexOf('-');
+        if(dashIdx === -1) return;
+        const start = parseInt(r.substring(0, dashIdx), 10);
+        const end = parseInt(r.substring(dashIdx + 1), 10);
+        if(!isNaN(start) && !isNaN(end)) result.push({ id, start, end });
+      });
+    });
+    result.sort((a,b)=> a.start - b.start);
+    return result;
+  }
+
+  function escapeHtml(str){
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function ensureReadableColor(hex){
+    // Twitchs eigene Namensfarben sind oft für helle Hintergründe gedacht -> auf unserem dunklen Grund zu dunkel/unlesbar
+    if(!hex || hex[0] !== '#' || hex.length !== 7) return '#c9a227';
+    let r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    if(isNaN(r) || isNaN(g) || isNaN(b)) return '#c9a227';
+    const luminance = 0.299*r + 0.587*g + 0.114*b;
+    if(luminance < 100){
+      const boost = c => Math.min(255, Math.round(c + (255 - c) * 0.55));
+      r = boost(r); g = boost(g); b = boost(b);
+      return '#' + [r,g,b].map(v => v.toString(16).padStart(2,'0')).join('');
+    }
+    return hex;
+  }
+
+  function buildMessageHtml(message, emotes){
+    if(!emotes || !emotes.length) return escapeHtml(message);
+    let html = '', cursor = 0;
+    emotes.forEach(em=>{
+      if(em.start < cursor || em.end < em.start || em.end >= message.length) return; // ungültig/überlappend -> überspringen
+      if(em.start > cursor) html += escapeHtml(message.slice(cursor, em.start));
+      const emoteText = message.slice(em.start, em.end + 1);
+      const animatedUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + em.id + '/animated/dark/3.0';
+      const staticUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + em.id + '/static/dark/3.0';
+      html += '<img class="chat-emote" src="' + animatedUrl + '" alt="' + escapeHtml(emoteText) + '" title="' + escapeHtml(emoteText) + '" '
+            + 'onerror="this.onerror=null;this.src=\'' + staticUrl + '\';">';
+      cursor = em.end + 1;
+    });
+    if(cursor < message.length) html += escapeHtml(message.slice(cursor));
+    return html;
+  }
+
+  function isMentioningMe(message){
+    if(!ownLogin) return false;
+    const escaped = ownLogin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('(^|[^a-z0-9_])@' + escaped + '(?![a-z0-9_])', 'i');
+    return re.test(message);
+  }
+
+  function isGreetingMessage(msg){
+    const clean = msg.toLowerCase().replace(/[.,!?;:()"'\/_\-]/g, ' ');
+    const words = clean.split(/\s+/).filter(Boolean); // ganze Nachricht prüfen (Emote-Codes am Anfang sollen "abend" & Co. nicht rausschieben)
+    const keywords = getGreetingKeywords();
+    return words.some(w => keywords.some(k=>{
+      if(k.length <= 2) return w === k; // ganz kurze Wörter (hi, na, jo, wb...) nur exakt, sonst zu viele Fehltreffer
+      return w === k || (w.startsWith(k) && w.length <= k.length + 3); // erlaubt z.B. "moinsens" für "moinsen"
+    }));
+  }
+
+  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId }, opts){
+    opts = opts || {};
+    const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber') || Object.prototype.hasOwnProperty.call(badges, 'founder');
+    const greeting = isGreetingMessage(message);
+    const alreadyGreeted = greetedUsers.has(userId);
+    let firstGreeting = false;
+    if(greeting && !alreadyGreeted){
+      const ts = Date.now();
+      greetedUsers.set(userId, ts);
+      persistGreeted();
+      syncSend({ type: 'greet', userId: userId, ts: ts });
+      firstGreeting = true;
+    }
+    const greetedNow = greetedUsers.has(userId);
+    const mentioned = isMentioningMe(message);
+
+    const row = document.createElement('div');
+    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '') + (mentioned ? ' mentioned-row' : '');
+    row.dataset.userId = userId;
+    row.dataset.displayName = displayName;
+    row.dataset.messageText = message;
+    if(messageId) row.dataset.messageId = messageId;
+    row.onclick = ()=>{
+      if(timeoutModeActive) executeTimeout(userId, displayName, row);
+    };
+
+    const statusIcon = document.createElement('span');
+    statusIcon.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
+    statusIcon.innerHTML = greetedNow ? CHECK_SVG : CROSS_SVG;
+    statusIcon.title = 'Klicken zum manuellen Umschalten, falls die automatische Erkennung danebenlag';
+    statusIcon.onclick = (e)=>{ e.stopPropagation(); toggleGreetedManually(userId); };
+    row.appendChild(statusIcon);
+
+    if(badges.broadcaster){
+      const b = document.createElement('span');
+      b.className = 'role-badge role-broadcaster'; b.textContent = 'Streamer';
+      row.appendChild(b);
+    } else if(badges.moderator){
+      const b = document.createElement('span');
+      b.className = 'role-badge role-mod'; b.textContent = 'Mod';
+      row.appendChild(b);
+    } else if(badges.vip){
+      const b = document.createElement('span');
+      b.className = 'role-badge role-vip'; b.textContent = 'VIP';
+      row.appendChild(b);
+    }
+    if(badges.founder){
+      const fb = document.createElement('span');
+      fb.className = 'role-badge role-founder'; fb.textContent = 'GR';
+      row.appendChild(fb);
+    }
+
+    if(isSub){
+      const tierBadge = document.createElement('span');
+      tierBadge.className = 'tier-badge';
+      const cachedTier = tierCache.get(userId);
+      if(cachedTier !== undefined){
+        applyTierBadge(tierBadge, cachedTier);
+      } else if(subscriptionsAvailable){
+        tierBadge.textContent = '…';
+        queueTierLookup(userId);
+      } else {
+        applyTierBadge(tierBadge, null);
+      }
+      row.appendChild(tierBadge);
+    }
+
+    const nameSpan = document.createElement('span');
+    nameSpan.className = 'display-name';
+    nameSpan.style.color = ensureReadableColor(color);
+    nameSpan.textContent = displayName + ':';
+    row.appendChild(nameSpan);
+
+    logUserMessage(userId, message);
+    const msgSpan = document.createElement('span');
+    msgSpan.className = 'message-text';
+    msgSpan.innerHTML = ' ' + buildMessageHtml(message, emotes);
+    row.appendChild(msgSpan);
+
+    const wasNearBottom = isNearBottom();
+    els.chat.appendChild(row);
+    if(wasNearBottom && !timeoutModeActive) els.chat.scrollTop = els.chat.scrollHeight;
+    trimOldMessages();
+
+    if(isMod && messageId && pendingSuspiciousIds.has(messageId)){
+      applySuspiciousFlag(row);
+      pendingSuspiciousIds.delete(messageId);
+    }
+
+    if(!opts.isReplay){
+      messageHistory.push(row.outerHTML);
+      if(messageHistory.length > MAX_ROWS) messageHistory.shift();
+      persistHistory();
+    }
+
+    // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
+    // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
+    if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
+      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, ts: Date.now() } });
+    }
+  }
+
+  function persistHistory(){
+    try{ localStorage.setItem('ligaChatOverlayHistory', JSON.stringify(messageHistory)); }catch(e){}
+  }
+
+  function restoreHistory(){
+    let saved = [];
+    try{ saved = JSON.parse(localStorage.getItem('ligaChatOverlayHistory') || '[]'); }catch(e){}
+    if(!saved.length) return;
+    saved.forEach(html=>{
+      const wrapper = document.createElement('div');
+      wrapper.innerHTML = html;
+      const el = wrapper.firstElementChild;
+      if(!el) return;
+      el.classList.toggle('timeout-armed', timeoutModeActive);
+      if(el.dataset.userId){
+        el.onclick = ()=>{ if(timeoutModeActive) executeTimeout(el.dataset.userId, el.dataset.displayName || '', el); };
+        const statusIconEl = el.querySelector('.status-icon');
+        if(statusIconEl) statusIconEl.onclick = (e)=>{ e.stopPropagation(); toggleGreetedManually(el.dataset.userId); };
+        // Namens-Klick (Infokarte) bewusst vorerst deaktiviert
+        const nameEl = el.querySelector('.display-name');
+        if(nameEl){ nameEl.style.cursor = ''; nameEl.title = ''; nameEl.onclick = null; }
+      }
+      els.chat.appendChild(el);
+      messageHistory.push(html);
+    });
+    els.emptyHint.style.display = 'none';
+    els.chat.scrollTop = els.chat.scrollHeight;
+  }
+
+  function isNearBottom(){
+    return els.chat.scrollHeight - els.chat.scrollTop - els.chat.clientHeight < 60;
+  }
+
+  function trimOldMessages(){
+    while(els.chat.children.length > MAX_ROWS + 1){ // +1 wegen emptyHint
+      const first = els.chat.children[0];
+      if(first === els.emptyHint) { els.chat.removeChild(els.chat.children[1]); }
+      else els.chat.removeChild(first);
+    }
+  }
+
+  // ---------- Start ----------
+  document.getElementById('versionLabel').textContent = OVERLAY_VERSION;
+  loadConfig();
+  applyLayout();
+  updateModsOnlyOptionAvailability();
+  restoreHistory();
+  const savedDraft = localStorage.getItem('ligaChatOverlayDraft');
+  if(savedDraft){ els.chatMessageInput.value = savedDraft; }
+  if(localStorage.getItem('ligaChatOverlayTransparent') === '1'){
+    document.body.classList.add('obs-transparent');
+  }
+  handleOAuthRedirect();
+  (async function init(){
+    if(accessToken){ await fetchAccountInfo(); }
+    else { setTierStatus('aus'); if(els.channel.value.trim()) connectIRC(); }
+  })();
+})();
+</script>
+</body>
+</html>
