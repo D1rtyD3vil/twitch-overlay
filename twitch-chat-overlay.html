@@ -268,6 +268,7 @@
     border-left-color: var(--gold);
     align-items:center;
   }
+  .chat-row.alert-row.alert-hidden-by-panel{ display:none; }
   .alert-icon{ flex:0 0 auto; color: var(--gold); }
   .alert-text{ color: var(--parchment); font-weight:600; }
 
@@ -808,7 +809,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.1.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.1.1 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -2118,7 +2119,12 @@
 
   // ---------- Event-Liste (kompakte Übersicht: Subs/Resubs/Gifts/Raids/Bits/Follows) ----------
   const MAX_EVENT_ENTRIES = 150;
-  els.eventPanelBtn.onclick = ()=>{ els.eventPanel.classList.toggle('open'); };
+  els.eventPanelBtn.onclick = ()=>{
+    const nowOpen = els.eventPanel.classList.toggle('open');
+    document.querySelectorAll('#chat .chat-row.alert-row').forEach(row=>{
+      row.classList.toggle('alert-hidden-by-panel', nowOpen);
+    });
+  };
 
   function formatEventTime(ts){
     const d = new Date(ts);
