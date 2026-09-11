@@ -522,7 +522,10 @@
     margin-bottom:4px;
     font-size:14px;
     animation: modchat-pulse 3.2s linear infinite;
+    transition: background-color 0.1s;
   }
+  .modchat-clickable{ cursor:pointer; }
+  .modchat-clickable:hover{ filter:brightness(1.15); }
   @keyframes modchat-pulse{
     0%   { box-shadow: 0 0 0 0 rgba(138,77,255,0.25); }
     50%  { box-shadow: 0 0 6px 1px rgba(138,77,255,0.4); }
@@ -805,7 +808,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.0.2 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.1.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1006,7 +1009,7 @@
     combined.sort((a,b)=> a.ts - b.ts);
     combined.forEach(entry=>{
       if(entry.kind === 'chat') renderMessage(entry.data, { isReplay: true });
-      else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, color: entry.data.color, isReplay: true });
+      else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, color: entry.data.color, replyTo: entry.data.replyTo, isReplay: true });
     });
   }
   function connectSyncServer(){
@@ -1075,7 +1078,7 @@
         removeAutomodHold(msg.id);
       } else if(msg.type === 'modChatMessage'){
         if(msg.scope === 'mods' && !els.showModsOnlyChannel.checked) return;
-        renderModChatMessage(msg.from, msg.text, { scope: msg.scope, color: msg.color });
+        renderModChatMessage(msg.from, msg.text, { scope: msg.scope, color: msg.color, replyTo: msg.replyTo });
       } else if(msg.type === 'modChatHistoryState'){
         if(!hasReplayedModChatHistory){
           hasReplayedModChatHistory = true;
@@ -1525,8 +1528,16 @@
 
   let pendingReplyTarget = null; // { msgId, displayName, body }
   function setReplyTarget(msgId, displayName, body){
-    pendingReplyTarget = { msgId, displayName, body };
+    pendingReplyTarget = { kind: 'twitch', msgId, displayName, body };
     switchChatMode('twitch'); // Antworten gehen nur an Twitch, dahin also automatisch umschalten
+    const shortBody = body.length > 50 ? body.slice(0, 50) + '…' : body;
+    els.replyIndicatorText.textContent = '↩ Antwort an ' + displayName + (shortBody ? ': ' + shortBody : '');
+    els.replyIndicatorBar.classList.add('open');
+    els.chatMessageInput.focus();
+  }
+  function setModChatReplyTarget(displayName, body, scope){
+    pendingReplyTarget = { kind: 'modchat', displayName, body, scope };
+    switchChatMode(scope === 'mods' ? 'modsOnly' : 'modsAndStreamer'); // in genau den Kanal wechseln, aus dem die Nachricht kam
     const shortBody = body.length > 50 ? body.slice(0, 50) + '…' : body;
     els.replyIndicatorText.textContent = '↩ Antwort an ' + displayName + (shortBody ? ': ' + shortBody : '');
     els.replyIndicatorBar.classList.add('open');
@@ -1571,16 +1582,20 @@
       // Mod-Chat: geht NICHT an Twitch, nur an andere offene Tool-Fenster über den Sync-Server
       const scope = mode === 'modsOnly' ? 'mods' : 'modsAndStreamer';
       const from = ownDisplayName || ownLogin;
-      syncSend({ type: 'modChat', from: from, text: text, scope: scope, color: ownColor });
-      renderModChatMessage(from, text, { scope: scope, color: ownColor });
+      const modReplyTo = (pendingReplyTarget && pendingReplyTarget.kind === 'modchat')
+        ? { displayName: pendingReplyTarget.displayName, body: pendingReplyTarget.body } : null;
+      syncSend({ type: 'modChat', from: from, text: text, scope: scope, color: ownColor, replyTo: modReplyTo });
+      renderModChatMessage(from, text, { scope: scope, color: ownColor, replyTo: modReplyTo });
       els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
+      clearReplyTarget();
       return;
     }
 
     if(!ws || ws.readyState !== 1) return;
     const channel = els.channel.value.trim().toLowerCase();
-    if(pendingReplyTarget){
-      ws.send('@reply-parent-msg-id=' + pendingReplyTarget.msgId + ' PRIVMSG #' + channel + ' :' + text);
+    const twitchReply = (pendingReplyTarget && pendingReplyTarget.kind === 'twitch') ? pendingReplyTarget : null;
+    if(twitchReply){
+      ws.send('@reply-parent-msg-id=' + twitchReply.msgId + ' PRIVMSG #' + channel + ' :' + text);
     } else {
       ws.send('PRIVMSG #' + channel + ' :' + text);
     }
@@ -1588,7 +1603,7 @@
     const badges = {};
     if(ownUserId === broadcasterId) badges.broadcaster = '1';
     else if(isMod) badges.moderator = '1';
-    const replyTo = pendingReplyTarget ? { parentMsgId: pendingReplyTarget.msgId, displayName: pendingReplyTarget.displayName, body: pendingReplyTarget.body } : null;
+    const replyTo = twitchReply ? { parentMsgId: twitchReply.msgId, displayName: twitchReply.displayName, body: twitchReply.body } : null;
     renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text, replyTo });
     els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
     clearReplyTarget();
@@ -1678,7 +1693,15 @@
   function renderModChatMessage(from, text, opts){
     opts = opts || {};
     const row = document.createElement('div');
-    row.className = 'modchat-row' + (opts.scope === 'mods' ? ' modchat-only' : '');
+    row.className = 'modchat-row' + (opts.scope === 'mods' ? ' modchat-only' : '') + ' modchat-clickable';
+    row.onclick = ()=>{ setModChatReplyTarget(from, text, opts.scope === 'mods' ? 'mods' : 'modsAndStreamer'); };
+    if(opts.replyTo){
+      const replyLine = document.createElement('div');
+      replyLine.className = 'reply-preview';
+      const shortBody = opts.replyTo.body.length > 50 ? opts.replyTo.body.slice(0, 50) + '…' : opts.replyTo.body;
+      replyLine.textContent = '↩ Antwort an ' + opts.replyTo.displayName + (shortBody ? ': ' + shortBody : '');
+      row.appendChild(replyLine);
+    }
     const tag = document.createElement('span');
     tag.className = 'mc-tag';
     tag.textContent = (opts.scope === 'mods' ? '2️⃣🤫 ' : '1️⃣🔒 ') + from + ':';
@@ -2564,7 +2587,7 @@
     // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
     // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
     if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
-      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, replyTo, ts: Date.now() } });
+      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, replyTo, messageId, ts: Date.now() } });
     }
   }
 
