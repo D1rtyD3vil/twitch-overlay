@@ -119,9 +119,13 @@
   }
   #modToolbar button.active{ background: var(--gold); color:#1a0f00; font-weight:700; }
   #timeoutStatus{ opacity:0.9; font-style:italic; }
-  #modRosterDisplay{ margin-left:auto; font-size:12px; color:var(--parchment-dim); }
-  #modRosterDisplay .roster-offline{ opacity:0.5; }
-  #modRosterDisplay .roster-sep{ opacity:0.4; margin:0 6px; }
+  #modRosterDisplay{
+    margin-left:auto; font-size:12px;
+    color:#ffffff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.55);
+  }
+  #modRosterDisplay .roster-offline{ color: rgba(255,255,255,0.6); }
+  #modRosterDisplay .roster-sep{ color: rgba(255,255,255,0.45); margin:0 6px; }
 
   /* ---------- Event-Liste + Chat nebeneinander ---------- */
   #mainArea{
@@ -753,7 +757,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v86 · 11.09.2026';
+  const OVERLAY_VERSION = 'v88 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -822,6 +826,7 @@
   let ownUserId = null;       // ID des eingeloggten Nutzers (Streamer oder Mod)
   let ownLogin = null;
   let ownDisplayName = null;
+  let ownColor = '#c9a227'; // Twitch-Namensfarbe, sobald über USERSTATE bekannt
   let isMod = false;
   let subscriptionsAvailable = false; // T1/T2/T3-Daten gibt Twitch nur dem Streamer selbst frei, nicht mal Mods
   let timeoutModeActive = false;
@@ -947,7 +952,7 @@
     combined.sort((a,b)=> a.ts - b.ts);
     combined.forEach(entry=>{
       if(entry.kind === 'chat') renderMessage(entry.data, { isReplay: true });
-      else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, isReplay: true });
+      else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, color: entry.data.color, isReplay: true });
     });
   }
   function connectSyncServer(){
@@ -1016,7 +1021,7 @@
         removeAutomodHold(msg.id);
       } else if(msg.type === 'modChatMessage'){
         if(msg.scope === 'mods' && !els.showModsOnlyChannel.checked) return;
-        renderModChatMessage(msg.from, msg.text, { scope: msg.scope });
+        renderModChatMessage(msg.from, msg.text, { scope: msg.scope, color: msg.color });
       } else if(msg.type === 'modChatHistoryState'){
         if(!hasReplayedModChatHistory){
           hasReplayedModChatHistory = true;
@@ -1473,8 +1478,8 @@
       // Mod-Chat: geht NICHT an Twitch, nur an andere offene Tool-Fenster über den Sync-Server
       const scope = mode === 'modsOnly' ? 'mods' : 'modsAndStreamer';
       const from = ownDisplayName || ownLogin;
-      syncSend({ type: 'modChat', from: from, text: text, scope: scope });
-      renderModChatMessage(from, text, { scope: scope });
+      syncSend({ type: 'modChat', from: from, text: text, scope: scope, color: ownColor });
+      renderModChatMessage(from, text, { scope: scope, color: ownColor });
       els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
       return;
     }
@@ -1578,6 +1583,7 @@
     const tag = document.createElement('span');
     tag.className = 'mc-tag';
     tag.textContent = (opts.scope === 'mods' ? '2️⃣🤫 ' : '1️⃣🔒 ') + from + ':';
+    if(opts.color) tag.style.color = ensureReadableColor(opts.color);
     row.appendChild(tag);
     const textEl = document.createElement('span');
     textEl.className = 'mc-text';
@@ -2055,6 +2061,7 @@
     if(!line.startsWith('@')) return;
     const spaceIdx = line.indexOf(' ');
     const tags = parseTags(line.substring(1, spaceIdx));
+    if(tags['color']) ownColor = tags['color'];
     const badges = tags['badges'] || '';
     const nowMod = tags['mod'] === '1' || badges.indexOf('moderator') !== -1 || badges.indexOf('broadcaster') !== -1;
     if(nowMod !== isMod){
