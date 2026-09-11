@@ -884,7 +884,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.5.1 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.5.2 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1522,6 +1522,7 @@
       // Eingeloggt, aber bestätigt kein Mod/Streamer -> Sperre bleibt, mit klarer Meldung
       els.gateMessage.textContent = 'Du bist bei "' + (els.channel.value || 'diesem Kanal') + '" nicht als Mod eingetragen — dieses Tool ist nur für Mods und den Streamer gedacht.';
       els.gateLoginBtn.textContent = 'Mit anderem Account verbinden';
+      els.gateLoginBtn.style.display = '';
     }
   }
   els.loginBtn.onclick = ()=>{
@@ -2765,6 +2766,11 @@
     document.body.classList.add('obs-transparent');
   }
   handleOAuthRedirect();
+  if(accessToken){
+    // Bereits vorher eingeloggt -> nicht erst "bitte einloggen" zeigen, sondern kurz "wird geprüft"
+    els.gateMessage.textContent = '🔄 Prüfe deinen Zugang...';
+    els.gateLoginBtn.style.display = 'none';
+  }
   (async function init(){
     if(accessToken){ await fetchAccountInfo(); }
     else { setTierStatus('aus'); if(els.channel.value.trim()) connectIRC(); }
