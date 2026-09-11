@@ -357,28 +357,29 @@
 
   #emotePreviewBar{
     display:none;
-    position:absolute; bottom:calc(100% + 12px); left:50%; transform:translateX(-50%);
-    align-items:center; gap:10px; flex-wrap:wrap;
-    max-width:90vw;
-    padding:8px 12px;
-    background: var(--panel-solid);
-    border:1px solid var(--border);
-    border-radius:10px;
-    box-shadow:0 4px 12px rgba(0,0,0,0.45);
+    position:absolute; bottom:calc(100% + 12px); left:0; right:0; height:0;
+    pointer-events:none;
     z-index:15;
   }
-  #emotePreviewBar.visible{ display:flex; }
-  #emotePreviewBar::after{
+  #emotePreviewBar.visible{ display:block; }
+  .epb-bubble{
+    position:absolute; bottom:0; transform:translateX(-50%);
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    background: var(--panel-solid);
+    border:1px solid var(--border);
+    border-radius:8px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.45);
+    padding:6px 8px;
+    font-size:10px; color:var(--parchment-dim);
+    white-space:nowrap;
+  }
+  .epb-bubble::after{
     content:'';
     position:absolute; top:100%; left:50%; transform:translateX(-50%);
-    border:7px solid transparent;
+    border:6px solid transparent;
     border-top-color: var(--panel-solid);
   }
-  #emotePreviewBar .epb-item{
-    display:flex; flex-direction:column; align-items:center; gap:2px;
-    font-size:10px; color:var(--parchment-dim);
-  }
-  #emotePreviewBar img{ width:36px; height:36px; object-fit:contain; }
+  .epb-bubble img{ width:32px; height:32px; object-fit:contain; }
 
   #chatInputBar{
     display:none;
@@ -687,7 +688,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v62 · 11.09.2026';
+  const OVERLAY_VERSION = 'v63 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1310,32 +1311,41 @@
   });
   els.chatMessageInput.addEventListener('input', updateEmotePreviewBubble);
 
+  const emoteMeasureSpan = document.createElement('span');
+  emoteMeasureSpan.style.cssText = 'position:absolute; left:-9999px; top:-9999px; white-space:pre; font-size:13px; font-family:inherit;';
+  document.body.appendChild(emoteMeasureSpan);
+
   function updateEmotePreviewBubble(){
-    const words = els.chatMessageInput.value.split(/\s+/).filter(Boolean);
-    const found = [];
-    const seen = new Set();
-    words.forEach(w=>{
-      const match = channelEmotes.find(e => e.name === w);
-      if(match && !seen.has(match.name)){ seen.add(match.name); found.push(match); }
-    });
-    if(!found.length){
-      els.emotePreviewBar.classList.remove('visible');
-      els.emotePreviewBar.innerHTML = '';
-      return;
+    const text = els.chatMessageInput.value;
+    const wordRegex = /\S+/g;
+    const matches = [];
+    let m;
+    while((m = wordRegex.exec(text)) !== null){
+      const emote = channelEmotes.find(e => e.name === m[0]);
+      if(emote) matches.push({ emote, start: m.index, word: m[0] });
     }
     els.emotePreviewBar.innerHTML = '';
-    found.forEach(em=>{
-      const item = document.createElement('div');
-      item.className = 'epb-item';
+    if(!matches.length){
+      els.emotePreviewBar.classList.remove('visible');
+      return;
+    }
+    const inputPaddingLeft = 8; // muss zu #chatInputBar input { padding: 6px 8px } passen
+    matches.forEach(match=>{
+      emoteMeasureSpan.textContent = text.substring(0, match.start);
+      const preWidth = emoteMeasureSpan.offsetWidth;
+      emoteMeasureSpan.textContent = match.word;
+      const wordWidth = emoteMeasureSpan.offsetWidth;
+      const left = els.chatMessageInput.offsetLeft + inputPaddingLeft + preWidth + (wordWidth / 2);
+
+      const bubble = document.createElement('div');
+      bubble.className = 'epb-bubble';
+      bubble.style.left = left + 'px';
       const img = document.createElement('img');
-      img.src = em.url;
-      img.alt = em.name;
-      img.onerror = ()=>{ img.onerror = null; img.src = em.staticUrl; };
-      item.appendChild(img);
-      const label = document.createElement('span');
-      label.textContent = em.name;
-      item.appendChild(label);
-      els.emotePreviewBar.appendChild(item);
+      img.src = match.emote.url;
+      img.alt = match.emote.name;
+      img.onerror = ()=>{ img.onerror = null; img.src = match.emote.staticUrl; };
+      bubble.appendChild(img);
+      els.emotePreviewBar.appendChild(bubble);
     });
     els.emotePreviewBar.classList.add('visible');
   }
