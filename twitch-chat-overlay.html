@@ -59,6 +59,8 @@
   #topbar button:hover{ border-color:var(--gold); }
   #statusDot{ width:8px; height:8px; border-radius:50%; background:var(--red); display:inline-block; }
   #statusDot.on{ background:var(--green); }
+  #syncStatusDot{ width:8px; height:8px; border-radius:50%; background:var(--red); display:inline-block; }
+  #syncStatusDot.on{ background:var(--green); }
   #tierStatus{ opacity:0.75; }
 
   #settingsPanel{
@@ -501,6 +503,9 @@
     <span id="statusDot"></span>
     <span id="connLabel">nicht verbunden</span>
     <span style="opacity:0.4">|</span>
+    <span id="syncStatusDot"></span>
+    <span id="syncConnLabel" title="Verbindung zu unserem eigenen Server (getrennt von Twitch) — wird u.a. für Mod-Chat, Begrüßungs-Sync und Mods-Online-Anzeige gebraucht">Sync: nicht verbunden</span>
+    <span style="opacity:0.4">|</span>
     <span id="tierStatus">Sub-Tier: aus</span>
     <button id="toggleSettings">⚙ Einstellungen</button>
     <button id="resetAllSessionBtn" style="display:none" title="Setzt die Begrüßungs-Session für dich und alle anderen zurück (läuft normalerweise automatisch beim ersten Verbinden pro Tag — dieser Knopf ist nur fürs Sicherheitsnetz da, z.B. bei einem 2. Stream am selben Tag)">Neue Session für alle</button>
@@ -748,7 +753,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v82 · 11.09.2026';
+  const OVERLAY_VERSION = 'v83 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -764,6 +769,8 @@
     panel: document.getElementById('settingsPanel'),
     topbar: document.getElementById('topbar'),
     statusDot: document.getElementById('statusDot'),
+    syncStatusDot: document.getElementById('syncStatusDot'),
+    syncConnLabel: document.getElementById('syncConnLabel'),
     connLabel: document.getElementById('connLabel'),
     tierStatus: document.getElementById('tierStatus'),
     chat: document.getElementById('chat'),
@@ -942,7 +949,10 @@
   }
   function connectSyncServer(){
     try{ syncWs = new WebSocket(SYNC_SERVER_URL); }catch(e){ return; }
-    syncWs.onopen = ()=>{ announceModStatus(); };
+    syncWs.onopen = ()=>{
+      setSyncConnStatus(true);
+      announceModStatus();
+    };
     syncWs.onmessage = (evt)=>{
       let msg;
       try{ msg = JSON.parse(evt.data); }catch(e){ return; }
@@ -1021,7 +1031,7 @@
         else pendingSuspiciousIds.add(msg.messageId);
       }
     };
-    syncWs.onclose = ()=>{ setTimeout(connectSyncServer, 4000); };
+    syncWs.onclose = ()=>{ setSyncConnStatus(false); setTimeout(connectSyncServer, 4000); };
     syncWs.onerror = ()=>{ try{ syncWs.close(); }catch(e){} };
   }
   function syncSend(obj){
@@ -1332,6 +1342,10 @@
   function setConnStatus(on){
     els.statusDot.classList.toggle('on', on);
     els.connLabel.textContent = on ? 'verbunden' : 'nicht verbunden';
+  }
+  function setSyncConnStatus(on){
+    els.syncStatusDot.classList.toggle('on', on);
+    els.syncConnLabel.textContent = 'Sync: ' + (on ? 'verbunden' : 'nicht verbunden');
   }
   function setTierStatus(text){ els.tierStatus.textContent = 'Sub-Tier: ' + text; }
 
