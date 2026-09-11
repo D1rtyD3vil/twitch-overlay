@@ -212,6 +212,39 @@
     font-style:italic;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  .reply-preview-clickable{ cursor:pointer; text-decoration:underline dotted; }
+  .reply-preview-clickable:hover{ color:var(--gold); opacity:1; }
+  .reply-btn{
+    order:99;
+    background:none; border:none; cursor:pointer;
+    color:var(--parchment-dim); font-size:13px;
+    padding:0 2px; opacity:0; transition:opacity 0.15s;
+    margin-left:auto;
+  }
+  .chat-row:hover .reply-btn{ opacity:0.8; }
+  .reply-btn:hover{ color:var(--gold); }
+  .reply-btn:disabled{ display:none; }
+  @keyframes reply-flash{
+    0%   { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0); }
+    30%  { box-shadow: 0 0 0 3px rgba(var(--gold-rgb),0.6); }
+    100% { box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0); }
+  }
+  .chat-row.reply-highlight{ animation: reply-flash 1.6s ease-out; }
+
+  #replyIndicatorBar{
+    align-items:center; gap:8px;
+    padding:5px 10px;
+    background: rgba(var(--gold-rgb),0.15);
+    border-top:1px solid var(--border);
+    font-size:12px;
+  }
+  #replyIndicatorBar.open{ display:flex; }
+  #replyIndicatorText{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  #cancelReplyBtn{
+    background:none; border:1px solid var(--border); color:var(--parchment);
+    border-radius:4px; cursor:pointer; padding:2px 7px; font-size:12px;
+  }
+
 
   .chat-row.mentioned-row{
     border-left-color: #38bdf8;
@@ -650,6 +683,11 @@
     </div>
   </div>
 
+  <div id="replyIndicatorBar" style="display:none">
+    <span id="replyIndicatorText"></span>
+    <button id="cancelReplyBtn" type="button">✕</button>
+  </div>
+
   <div id="chatInputBar">
     <div id="emotePreviewBar"></div>
     <select id="chatModeSelect" style="display:none">
@@ -773,7 +811,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v93 · 11.09.2026';
+  const OVERLAY_VERSION = 'v95 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -818,6 +856,9 @@
     emotePickerBtn: document.getElementById('emotePickerBtn'),
     emotePickerPopup: document.getElementById('emotePickerPopup'),
     emotePreviewBar: document.getElementById('emotePreviewBar'),
+    replyIndicatorBar: document.getElementById('replyIndicatorBar'),
+    replyIndicatorText: document.getElementById('replyIndicatorText'),
+    cancelReplyBtn: document.getElementById('cancelReplyBtn'),
     emoteSearchInput: document.getElementById('emoteSearchInput'),
     emoteResultsContainer: document.getElementById('emoteResultsContainer'),
     sendChatBtn: document.getElementById('sendChatBtn'),
@@ -1488,9 +1529,47 @@
     els.chatInputBar.classList.toggle('visible', visible);
   }
 
+  let pendingReplyTarget = null; // { msgId, displayName, body }
+  function setReplyTarget(msgId, displayName, body){
+    pendingReplyTarget = { msgId, displayName, body };
+    const shortBody = body.length > 50 ? body.slice(0, 50) + '…' : body;
+    els.replyIndicatorText.textContent = '↩ Antwort an ' + displayName + (shortBody ? ': ' + shortBody : '');
+    els.replyIndicatorBar.classList.add('open');
+    els.chatMessageInput.focus();
+  }
+  function clearReplyTarget(){
+    pendingReplyTarget = null;
+    els.replyIndicatorBar.classList.remove('open');
+  }
+  els.cancelReplyBtn.onclick = clearReplyTarget;
+
+  function switchChatMode(newMode){
+    if(els.chatModeSelect.style.display === 'none') return false; // gar keine Auswahl verfügbar (kein Login)
+    const opt = els.chatModeSelect.querySelector('option[value="' + newMode + '"]');
+    if(!opt || opt.disabled) return false;
+    els.chatModeSelect.value = newMode;
+    localStorage.setItem('ligaChatOverlayChatMode', newMode);
+    return true;
+  }
+
   function sendChatMessage(){
-    const text = els.chatMessageInput.value.trim();
+    let text = els.chatMessageInput.value.trim();
     if(!text || !accessToken || !ownLogin) return;
+
+    // Schnellwechsel per Befehl am Anfang der Nachricht: /t = Twitch Chat, /1 = Mods+Streamer, /2 = nur Mods
+    const cmdMatch = text.match(/^\/(t|1|2)(\s+(.*))?$/is);
+    if(cmdMatch){
+      const targetMode = cmdMatch[1] === 't' ? 'twitch' : (cmdMatch[1] === '1' ? 'modsAndStreamer' : 'modsOnly');
+      const switched = switchChatMode(targetMode);
+      const rest = (cmdMatch[3] || '').trim();
+      if(!switched || !rest){
+        // Nur Kanal gewechselt (oder Wechsel nicht möglich), nichts senden
+        els.chatMessageInput.value = rest;
+        updateEmotePreviewBubble();
+        return;
+      }
+      text = rest; // Rest der Nachricht direkt im neuen Kanal senden
+    }
 
     const mode = els.chatModeSelect.style.display !== 'none' ? els.chatModeSelect.value : 'twitch';
     if(mode === 'modsAndStreamer' || mode === 'modsOnly'){
@@ -1505,13 +1584,19 @@
 
     if(!ws || ws.readyState !== 1) return;
     const channel = els.channel.value.trim().toLowerCase();
-    ws.send('PRIVMSG #' + channel + ' :' + text);
+    if(pendingReplyTarget){
+      ws.send('@reply-parent-msg-id=' + pendingReplyTarget.msgId + ' PRIVMSG #' + channel + ' :' + text);
+    } else {
+      ws.send('PRIVMSG #' + channel + ' :' + text);
+    }
     // Twitch schickt eigene Nachrichten nicht automatisch zurück -> selbst anzeigen
     const badges = {};
     if(ownUserId === broadcasterId) badges.broadcaster = '1';
     else if(isMod) badges.moderator = '1';
-    renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text });
+    const replyTo = pendingReplyTarget ? { parentMsgId: pendingReplyTarget.msgId, displayName: pendingReplyTarget.displayName, body: pendingReplyTarget.body } : null;
+    renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text, replyTo });
     els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
+    clearReplyTarget();
   }
   els.sendChatBtn.onclick = sendChatMessage;
   els.chatMessageInput.addEventListener('keydown', (e)=>{
@@ -2137,6 +2222,7 @@
     let replyTo = null;
     if(tags['reply-parent-msg-id']){
       replyTo = {
+        parentMsgId: tags['reply-parent-msg-id'],
         displayName: tags['reply-parent-display-name'] || tags['reply-parent-user-login'] || 'jemandem',
         body: tags['reply-parent-msg-body'] || ''
       };
@@ -2395,8 +2481,36 @@
       replyLine.className = 'reply-preview';
       const shortBody = replyTo.body.length > 60 ? replyTo.body.slice(0, 60) + '…' : replyTo.body;
       replyLine.textContent = '↩ Antwort an ' + replyTo.displayName + (shortBody ? ': ' + shortBody : '');
+      if(replyTo.parentMsgId){
+        replyLine.classList.add('reply-preview-clickable');
+        replyLine.onclick = (e)=>{
+          e.stopPropagation();
+          const target = document.querySelector('.chat-row[data-message-id="' + CSS.escape(replyTo.parentMsgId) + '"]');
+          if(target){
+            target.scrollIntoView({ behavior:'smooth', block:'center' });
+            target.classList.add('reply-highlight');
+            setTimeout(()=> target.classList.remove('reply-highlight'), 1600);
+          }
+        };
+      }
       row.appendChild(replyLine);
     }
+
+    const replyBtn = document.createElement('button');
+    replyBtn.className = 'reply-btn';
+    replyBtn.type = 'button';
+    replyBtn.title = 'Auf diese Nachricht antworten';
+    replyBtn.textContent = '↩';
+    if(!messageId){
+      replyBtn.disabled = true;
+      replyBtn.title = 'Antworten hier nicht möglich (keine Nachrichten-ID)';
+    } else {
+      replyBtn.onclick = (e)=>{
+        e.stopPropagation();
+        setReplyTarget(messageId, displayName, message);
+      };
+    }
+    row.appendChild(replyBtn);
 
     const statusIcon = document.createElement('span');
     statusIcon.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
