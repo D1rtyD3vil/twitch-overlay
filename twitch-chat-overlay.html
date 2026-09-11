@@ -117,7 +117,9 @@
   }
   #modToolbar button.active{ background: var(--gold); color:#1a0f00; font-weight:700; }
   #timeoutStatus{ opacity:0.9; font-style:italic; }
-  #modsOnlineDisplay{ margin-left:auto; font-size:12px; color:var(--parchment-dim); }
+  #modRosterDisplay{ margin-left:auto; font-size:12px; color:var(--parchment-dim); }
+  #modRosterDisplay .roster-offline{ opacity:0.5; }
+  #modRosterDisplay .roster-sep{ opacity:0.4; margin:0 6px; }
 
   /* ---------- Event-Liste + Chat nebeneinander ---------- */
   #mainArea{
@@ -521,7 +523,7 @@
     <button id="timeoutUnitBtn" title="Zwischen Sekunden und Minuten umschalten">⇄ Min.</button>
     <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
     <span id="timeoutStatus"></span>
-    <span id="modsOnlineDisplay"></span>
+    <span id="modRosterDisplay"></span>
   </div>
 
   <div id="settingsPanel">
@@ -739,7 +741,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v76 · 11.09.2026';
+  const OVERLAY_VERSION = 'v77 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -774,7 +776,7 @@
     timeoutUnitBtn: document.getElementById('timeoutUnitBtn'),
     timeoutModeBtn: document.getElementById('timeoutModeBtn'),
     timeoutStatus: document.getElementById('timeoutStatus'),
-    modsOnlineDisplay: document.getElementById('modsOnlineDisplay'),
+    modRosterDisplay: document.getElementById('modRosterDisplay'),
     chatInputBar: document.getElementById('chatInputBar'),
     chatMessageInput: document.getElementById('chatMessageInput'),
     chatModeSelect: document.getElementById('chatModeSelect'),
@@ -915,8 +917,8 @@
         if(msg.greetingList && msg.greetingList.length){
           applyGreetingListUpdate(msg.greetingList);
         }
-        if(msg.modsOnline){
-          els.modsOnlineDisplay.textContent = msg.modsOnline.length ? ('🟢 Mods online: ' + msg.modsOnline.join(', ')) : '';
+        if(msg.modRoster){
+          renderModRoster(msg.modRoster);
         }
       } else if(msg.type === 'greetingListUpdate'){
         applyGreetingListUpdate(msg.words);
@@ -948,9 +950,8 @@
         });
       } else if(msg.type === 'followEvent'){
         renderAlert(msg.userName + ' folgt jetzt! 💜');
-      } else if(msg.type === 'modsOnline'){
-        const names = msg.names || [];
-        els.modsOnlineDisplay.textContent = names.length ? ('🟢 Mods online: ' + names.join(', ')) : '';
+      } else if(msg.type === 'modRoster'){
+        renderModRoster(msg.roster || []);
       } else if(msg.type === 'suspiciousFlag'){
         if(!isMod) return;
         const row = document.querySelector('.chat-row[data-message-id="' + CSS.escape(msg.messageId) + '"]');
@@ -964,6 +965,34 @@
   function syncSend(obj){
     if(syncWs && syncWs.readyState === 1) syncWs.send(JSON.stringify(obj));
   }
+  function renderModRoster(roster){
+    els.modRosterDisplay.innerHTML = '';
+    const streamerEntry = roster.find(r => r.isBroadcaster);
+    const modEntries = roster.filter(r => !r.isBroadcaster);
+    if(streamerEntry){
+      const s = document.createElement('span');
+      s.textContent = '👑 ' + streamerEntry.name + ': ' + (streamerEntry.online ? '🟢 Online' : '⚪ Offline');
+      els.modRosterDisplay.appendChild(s);
+    }
+    if(modEntries.length){
+      if(streamerEntry){
+        const sep = document.createElement('span');
+        sep.className = 'roster-sep';
+        sep.textContent = '|';
+        els.modRosterDisplay.appendChild(sep);
+      }
+      const label = document.createElement('span');
+      label.textContent = 'Mods: ';
+      els.modRosterDisplay.appendChild(label);
+      modEntries.forEach((m, i)=>{
+        const item = document.createElement('span');
+        if(!m.online) item.className = 'roster-offline';
+        item.textContent = m.name + (m.online ? ' 🟢' : '') + (i < modEntries.length - 1 ? ', ' : '');
+        els.modRosterDisplay.appendChild(item);
+      });
+    }
+  }
+
   function announceModStatus(){
     syncSend({ type: 'identify', isMod: isMod, displayName: ownDisplayName || ownLogin || '', isBroadcaster: ownUserId === broadcasterId });
     updateChatModeOptions();
