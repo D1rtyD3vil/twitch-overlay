@@ -115,6 +115,7 @@
   #eventPanel{
     display:none;
     width:230px; flex:0 0 230px;
+    min-height:0;
     overflow-y:auto;
     border-right:1px solid var(--border);
     background:var(--panel-solid);
@@ -472,7 +473,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v46 · 11.09.2026';
+  const OVERLAY_VERSION = 'v48 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -608,6 +609,9 @@
         (msg.history || []).forEach(item=>{
           if(item.t === 'chat') renderMessage(item, { isReplay: true });
           else if(item.t === 'modchat') renderModChatMessage(item.from, item.text);
+        });
+        (msg.eventHistory || []).forEach(item=>{
+          addEventEntry(item.text, item.ts);
         });
       } else if(msg.type === 'greetUpdate'){
         if(msg.greeted) greetedUsers.add(msg.userId); else greetedUsers.delete(msg.userId);
@@ -1162,6 +1166,16 @@
       updateRenderedTiers([targetUserId]);
     }
 
+    // Einzelne (nicht per Massen-Gift-Funktion verschenkte) Gifts selbst zusammenfassen,
+    // damit 5+ schnelle Einzel-Gifts derselben Person nicht als 5+ Zeilen auftauchen
+    if((msgId === 'subgift' || msgId === 'anonsubgift') && !tags['msg-param-community-gift-id']){
+      const gifterName = msgId === 'anonsubgift' ? 'Jemand' : (tags['display-name'] || tags['login'] || 'Jemand');
+      const tierWordVal = tierWord(tags['msg-param-sub-plan']);
+      const tierLabel = tierWordVal === 'Prime' ? 'Prime' : ('T' + tierWordVal);
+      bumpGiftGroup(gifterName, tierLabel);
+      return;
+    }
+
     // Eigener deutscher Text statt Twitchs englischem system-msg — als Alert-Zeile anzeigen
     const alertText = buildGermanAlertText(tags);
     if(alertText){
@@ -1199,8 +1213,11 @@
         return name + ' ist seit ' + cumulative + ' Monaten dabei' + streakPart + ' — ' + tierLabel + '! 🎉';
       }
       case 'subgift':
+        // Teil einer Massen-Gift-Welle? -> nicht einzeln anzeigen, das übernimmt die "submysterygift"-Sammelzeile
+        if(tags['msg-param-community-gift-id']) return null;
         return name + ' hat ' + (tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
       case 'anonsubgift':
+        if(tags['msg-param-community-gift-id']) return null;
         return 'Jemand hat ' + (tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
       case 'submysterygift': {
         const count = tags['msg-param-mass-gift-count'] || '?';
@@ -1227,10 +1244,18 @@
     return v.replace(/\\s/g, ' ').replace(/\\:/g, ';').replace(/\\\\/g, '\\').replace(/\\r/g, '').replace(/\\n/g, ' ');
   }
 
-  function renderAlert(text, extraMsg, extraEmotes){
-    addEventEntry(text);
+  function renderAlert(text, extraMsg, extraEmotes, opts){
+    opts = opts || {};
+    const ts = opts.ts || Date.now();
+    addEventEntry(text, ts);
+    if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
+      syncSend({ type: 'historyAdd', item: { t: 'alert', text: text, ts: ts } });
+    }
     if(els.eventPanel.classList.contains('open')) return; // Eventliste an -> Subs/Gifts/Raids nicht zusätzlich im Chat, kein Spam
+    insertAlertChatRow(text, extraMsg, extraEmotes);
+  }
 
+  function insertAlertChatRow(text, extraMsg, extraEmotes){
     const row = document.createElement('div');
     row.className = 'chat-row alert-row';
     const icon = document.createElement('span');
@@ -1254,22 +1279,70 @@
     persistHistory();
   }
 
-  // ---------- Event-Liste (kompakte Übersicht: Subs/Resubs/Gifts/Raids/Bits) ----------
-  const MAX_EVENT_ENTRIES = 60;
+  // ---------- Event-Liste (kompakte Übersicht: Subs/Resubs/Gifts/Raids/Bits/Follows) ----------
+  const MAX_EVENT_ENTRIES = 150;
   els.eventPanelBtn.onclick = ()=>{ els.eventPanel.classList.toggle('open'); };
-  function addEventEntry(text){
+
+  function formatEventTime(ts){
+    const d = new Date(ts);
+    return d.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit' }) + ' '
+         + d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+  }
+
+  function addEventEntry(text, ts){
+    ts = ts || Date.now();
     const entry = document.createElement('div');
     entry.className = 'event-entry';
     entry.textContent = text;
     const timeEl = document.createElement('span');
     timeEl.className = 'ee-time';
-    timeEl.textContent = new Date().toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+    timeEl.textContent = formatEventTime(ts);
     entry.appendChild(timeEl);
     els.eventPanel.insertBefore(entry, els.eventPanel.firstChild);
     while(els.eventPanel.children.length > MAX_EVENT_ENTRIES){
       els.eventPanel.removeChild(els.eventPanel.lastChild);
     }
   }
+
+  // Einzel-Gifts (kein offizielles Massen-Gift) derselben Person kurz sammeln statt spammen
+  const pendingGiftGroups = new Map(); // gifterName -> { count, el, tierLabel, timeout }
+  const GIFT_GROUP_WINDOW_MS = 8000;
+  function bumpGiftGroup(gifterName, tierLabel){
+    let g = pendingGiftGroups.get(gifterName);
+    if(!g){
+      const el = document.createElement('div');
+      el.className = 'event-entry';
+      els.eventPanel.insertBefore(el, els.eventPanel.firstChild);
+      g = { count: 0, el: el, tierLabel: tierLabel };
+      pendingGiftGroups.set(gifterName, g);
+    }
+    g.count++;
+    g.el.textContent = gifterName + ' verschenkt gerade ' + g.tierLabel + '-Abos... (' + g.count + ') 🎁';
+    if(g.timeout) clearTimeout(g.timeout);
+    g.timeout = setTimeout(()=> finalizeGiftGroup(gifterName), GIFT_GROUP_WINDOW_MS);
+  }
+  function finalizeGiftGroup(gifterName){
+    const g = pendingGiftGroups.get(gifterName);
+    if(!g) return;
+    pendingGiftGroups.delete(gifterName);
+    const ts = Date.now();
+    const finalText = gifterName + ' hat ' + g.count + ' ' + (g.count === 1 ? 'Abo' : 'Abos') + ' verschenkt! 🎁';
+    g.el.textContent = finalText;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'ee-time';
+    timeEl.textContent = formatEventTime(ts);
+    g.el.appendChild(timeEl);
+    while(els.eventPanel.children.length > MAX_EVENT_ENTRIES){
+      els.eventPanel.removeChild(els.eventPanel.lastChild);
+    }
+    if(ownUserId && ownUserId === broadcasterId){
+      syncSend({ type: 'historyAdd', item: { t: 'alert', text: finalText, ts: ts } });
+    }
+    if(!els.eventPanel.classList.contains('open')){
+      insertAlertChatRow(finalText, null, null);
+    }
+  }
+
 
   function handleUserState(line){
     // Twitchs eigene, verlässliche Statusmeldung: nur bei authentifizierter Verbindung sinnvoll gefüllt
