@@ -884,7 +884,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.5.3 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.5.4 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -2591,13 +2591,18 @@
     }));
   }
 
-  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId, replyTo, isFirstMsg }, opts){
+  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId, replyTo, isFirstMsg, wasFirstGreeting }, opts){
     opts = opts || {};
     const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber') || Object.prototype.hasOwnProperty.call(badges, 'founder');
     const greeting = isGreetingMessage(message);
     const alreadyGreeted = greetedUsers.has(userId);
     let firstGreeting = false;
-    if(greeting && !alreadyGreeted){
+    if(opts.isReplay){
+      // Beim Wiederherstellen NICHT neu berechnen (greetedUsers ist zu dem Zeitpunkt schon auf dem aktuellen
+      // Stand, also würde "schon begrüßt" fälschlich als "nicht die erste Begrüßung" durchgehen) —
+      // stattdessen den beim Original-Empfang gespeicherten Wert einfach übernehmen.
+      firstGreeting = !!wasFirstGreeting;
+    } else if(greeting && !alreadyGreeted){
       const ts = Date.now();
       greetedUsers.set(userId, ts);
       persistGreeted();
@@ -2710,7 +2715,7 @@
     // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
     // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
     if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
-      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, replyTo, messageId, isFirstMsg, ts: Date.now() } });
+      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, replyTo, messageId, isFirstMsg, wasFirstGreeting: firstGreeting, ts: Date.now() } });
     }
   }
 
