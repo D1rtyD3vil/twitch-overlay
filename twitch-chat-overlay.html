@@ -183,6 +183,24 @@
     background-color: rgba(var(--gold-rgb), 0.22);
   }
 
+  .chat-row.mentioned-row{
+    border-left-color: #38bdf8;
+    background-color: rgba(56, 189, 248, 0.22);
+    box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.35);
+  }
+
+  .chat-row.suspicious-row{
+    border-left-color: #eab308;
+    box-shadow: inset 0 0 0 1px rgba(234, 179, 8, 0.4);
+  }
+  .suspicious-badge{
+    display:inline-block;
+    background:#eab308; color:#1a0f00;
+    font-size:10px; font-weight:700;
+    border-radius:3px; padding:1px 5px;
+    margin-right:6px;
+  }
+
   .chat-row.timeout-armed{ cursor:pointer; }
   .chat-row.timeout-armed:hover{ outline:2px solid var(--red); outline-offset:-2px; }
   .chat-row.timed-out{ opacity:0.45; }
@@ -709,7 +727,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v69 · 11.09.2026';
+  const OVERLAY_VERSION = 'v71 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -913,6 +931,11 @@
         renderModChatMessage(msg.from, msg.text);
       } else if(msg.type === 'followEvent'){
         renderAlert(msg.userName + ' folgt jetzt! 💜');
+      } else if(msg.type === 'suspiciousFlag'){
+        if(!isMod) return;
+        const row = document.querySelector('.chat-row[data-message-id="' + CSS.escape(msg.messageId) + '"]');
+        if(row) applySuspiciousFlag(row);
+        else pendingSuspiciousIds.add(msg.messageId);
       }
     };
     syncWs.onclose = ()=>{ setTimeout(connectSyncServer, 4000); };
@@ -1414,12 +1437,8 @@
     els.chat.appendChild(row);
     if(wasNearBottom) els.chat.scrollTop = els.chat.scrollHeight;
     trimOldMessages();
-
-    if(!opts.isReplay){
-      messageHistory.push(row.outerHTML);
-      if(messageHistory.length > MAX_ROWS) messageHistory.shift();
-      persistHistory();
-    }
+    // Bewusst KEIN lokales Speichern hier — der Server merkt sich Mod-Chat-Verlauf schon zentral
+    // und schickt ihn beim Verbinden mit; doppeltes lokales Speichern hat sonst zu Duplikaten bei F5 geführt.
   }
 
   // ---------- Stream-Vorschau (einblendbar, per Ziehen an der Unterkante skalierbar) ----------
@@ -1933,7 +1952,18 @@
     if(tags['bits'] && parseInt(tags['bits'], 10) > 0){
       addEventEntry(displayName + ' hat ' + tags['bits'] + ' Bits gecheert 💎');
     }
-    renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes });
+    renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes, messageId: tags['id'] });
+  }
+
+  // ---------- "Unter Beobachtung" (Suspicious User) — nur für Mods sichtbar, kommt vom Server ----------
+  const pendingSuspiciousIds = new Set(); // Nachrichten-IDs, deren Zeile noch nicht existiert, wenn das Flag ankommt
+  function applySuspiciousFlag(row){
+    if(row.classList.contains('suspicious-row')) return;
+    row.classList.add('suspicious-row');
+    const badge = document.createElement('span');
+    badge.className = 'suspicious-badge';
+    badge.textContent = '🛡 Unter Beobachtung';
+    row.insertBefore(badge, row.firstChild);
   }
 
   const subscriberBadgeTierMap = new Map(); // Badge-Versions-ID (aus dem "badges"-Tag) -> '1000'|'2000'|'3000'
@@ -2128,6 +2158,13 @@
     return html;
   }
 
+  function isMentioningMe(message){
+    if(!ownLogin) return false;
+    const escaped = ownLogin.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp('(^|[^a-z0-9_])@' + escaped + '(?![a-z0-9_])', 'i');
+    return re.test(message);
+  }
+
   function isGreetingMessage(msg){
     const clean = msg.toLowerCase().replace(/[.,!?;:()"'\/_\-]/g, ' ');
     const words = clean.split(/\s+/).filter(Boolean); // ganze Nachricht prüfen (Emote-Codes am Anfang sollen "abend" & Co. nicht rausschieben)
@@ -2138,7 +2175,7 @@
     }));
   }
 
-  function renderMessage({ displayName, userId, color, badges, message, emotes }, opts){
+  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId }, opts){
     opts = opts || {};
     const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber') || Object.prototype.hasOwnProperty.call(badges, 'founder');
     const greeting = isGreetingMessage(message);
@@ -2152,11 +2189,13 @@
       firstGreeting = true;
     }
     const greetedNow = greetedUsers.has(userId);
+    const mentioned = isMentioningMe(message);
 
     const row = document.createElement('div');
-    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '');
+    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '') + (mentioned ? ' mentioned-row' : '');
     row.dataset.userId = userId;
     row.dataset.displayName = displayName;
+    if(messageId) row.dataset.messageId = messageId;
     row.onclick = ()=>{ if(timeoutModeActive) executeTimeout(userId, displayName, row); };
 
     const statusIcon = document.createElement('span');
@@ -2216,6 +2255,11 @@
     els.chat.appendChild(row);
     if(wasNearBottom) els.chat.scrollTop = els.chat.scrollHeight;
     trimOldMessages();
+
+    if(isMod && messageId && pendingSuspiciousIds.has(messageId)){
+      applySuspiciousFlag(row);
+      pendingSuspiciousIds.delete(messageId);
+    }
 
     if(!opts.isReplay){
       messageHistory.push(row.outerHTML);
