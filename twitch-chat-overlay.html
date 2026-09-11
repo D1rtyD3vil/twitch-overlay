@@ -189,7 +189,7 @@
   }
   .chat-row{
     display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;
-    padding:4px 8px;
+    padding:4px 26px 4px 8px;
     margin-bottom:4px;
     border-radius:5px;
     background: var(--panel);
@@ -197,6 +197,7 @@
     font-size: 16px;
     line-height:1.35;
     word-break: break-word;
+    position:relative;
   }
   .chat-row.first-greeting{
     border-left-color: var(--gold);
@@ -215,13 +216,13 @@
   .reply-preview-clickable{ cursor:pointer; text-decoration:underline dotted; }
   .reply-preview-clickable:hover{ color:var(--gold); opacity:1; }
   .reply-btn{
-    order:99;
+    position:absolute; right:4px; top:50%; transform:translateY(-50%);
     background:none; border:none; cursor:pointer;
-    color:var(--parchment-dim); font-size:13px;
-    padding:0 2px; opacity:0; transition:opacity 0.15s;
-    margin-left:auto;
+    color:var(--parchment-dim); font-size:15px;
+    padding:2px 4px; opacity:0; transition:opacity 0.15s;
+    z-index:2;
   }
-  .chat-row:hover .reply-btn{ opacity:0.8; }
+  .chat-row:hover .reply-btn{ opacity:1; }
   .reply-btn:hover{ color:var(--gold); }
   .reply-btn:disabled{ display:none; }
   @keyframes reply-flash{
@@ -811,7 +812,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v95 · 11.09.2026';
+  const OVERLAY_VERSION = 'v98 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
