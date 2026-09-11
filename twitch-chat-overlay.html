@@ -246,6 +246,18 @@
     box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.35);
   }
 
+  .chat-row.first-chatter-row{
+    border-left-color: #22c55e;
+    box-shadow: inset 0 0 0 1px rgba(34, 197, 94, 0.45);
+  }
+  .chat-row.first-chatter-row::before{
+    content: '🌱 Zum ersten Mal hier!';
+    flex-basis:100%; order:-2;
+    font-size:10px; font-weight:700;
+    color:#4ade80;
+    text-transform:uppercase; letter-spacing:0.02em;
+  }
+
   .chat-row.suspicious-row{
     border-left-color: #eab308;
     box-shadow: inset 0 0 0 1px rgba(234, 179, 8, 0.4);
@@ -809,7 +821,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.2.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.3.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -2251,7 +2263,8 @@
         body: tags['reply-parent-msg-body'] || ''
       };
     }
-    renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes, messageId: tags['id'], replyTo });
+    const isFirstMsg = tags['first-msg'] === '1';
+    renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes, messageId: tags['id'], replyTo, isFirstMsg });
   }
 
   // ---------- "Unter Beobachtung" (Suspicious User) — nur für Mods sichtbar, kommt vom Server ----------
@@ -2474,7 +2487,7 @@
     }));
   }
 
-  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId, replyTo }, opts){
+  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId, replyTo, isFirstMsg }, opts){
     opts = opts || {};
     const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber') || Object.prototype.hasOwnProperty.call(badges, 'founder');
     const greeting = isGreetingMessage(message);
@@ -2491,7 +2504,7 @@
     const mentioned = isMentioningMe(message);
 
     const row = document.createElement('div');
-    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '') + (mentioned ? ' mentioned-row' : '');
+    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '') + (mentioned ? ' mentioned-row' : '') + (isFirstMsg ? ' first-chatter-row' : '');
     row.dataset.userId = userId;
     row.dataset.displayName = displayName;
     row.dataset.messageText = message;
@@ -2593,7 +2606,7 @@
     // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
     // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
     if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
-      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, replyTo, messageId, ts: Date.now() } });
+      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, replyTo, messageId, isFirstMsg, ts: Date.now() } });
     }
   }
 
