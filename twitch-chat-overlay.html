@@ -464,12 +464,12 @@
     padding:4px 8px;
     margin-bottom:4px;
     font-size:14px;
-    animation: modchat-pulse 2.4s ease-in-out infinite;
+    animation: modchat-pulse 3.2s linear infinite;
   }
   @keyframes modchat-pulse{
-    0%   { box-shadow: 0 0 0 0 rgba(138,77,255,0.45); }
-    50%  { box-shadow: 0 0 8px 2px rgba(138,77,255,0.55); }
-    100% { box-shadow: 0 0 0 0 rgba(138,77,255,0.45); }
+    0%   { box-shadow: 0 0 0 0 rgba(138,77,255,0.25); }
+    50%  { box-shadow: 0 0 6px 1px rgba(138,77,255,0.4); }
+    100% { box-shadow: 0 0 0 0 rgba(138,77,255,0.25); }
   }
   .modchat-row .mc-tag{ color:#c9a8ff; font-weight:700; margin-right:6px; }
   .modchat-row .mc-text{ color:var(--parchment); }
@@ -591,8 +591,6 @@
     </div>
     <div class="row">
       <button id="saveSettingsBtn">Speichern</button>
-      <button id="obsModeBtn">OBS-Modus (Leiste ausblenden)</button>
-      <button id="transparentBtn">Transparenz an/aus (für OBS)</button>
     </div>
   </div>
 
@@ -727,7 +725,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v71 · 11.09.2026';
+  const OVERLAY_VERSION = 'v74 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -738,8 +736,6 @@
     connectBtn: document.getElementById('connectBtn'),
     loginBtn: document.getElementById('loginBtn'),
     saveBtn: document.getElementById('saveSettingsBtn'),
-    obsModeBtn: document.getElementById('obsModeBtn'),
-    transparentBtn: document.getElementById('transparentBtn'),
     toggleSettings: document.getElementById('toggleSettings'),
     resetAllBtn: document.getElementById('resetAllSessionBtn'),
     panel: document.getElementById('settingsPanel'),
@@ -1008,14 +1004,6 @@
   // ---------- UI ----------
   els.toggleSettings.onclick = ()=> els.panel.classList.toggle('open');
   els.saveBtn.onclick = ()=>{ saveConfig(); els.panel.classList.remove('open'); };
-  els.obsModeBtn.onclick = ()=>{
-    els.topbar.classList.add('hidden-for-obs');
-    els.panel.classList.remove('open');
-  };
-  els.transparentBtn.onclick = ()=>{
-    const on = document.body.classList.toggle('obs-transparent');
-    localStorage.setItem('ligaChatOverlayTransparent', on ? '1' : '0');
-  };
   els.resetAllBtn.onclick = ()=>{
     if(confirm('Begrüßungs-Session bei DIR UND allen anderen mit offenem Tool (z.B. Mods) zurücksetzen?')){
       resetGreetingsForAll();
@@ -2195,8 +2183,11 @@
     row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '') + (mentioned ? ' mentioned-row' : '');
     row.dataset.userId = userId;
     row.dataset.displayName = displayName;
+    row.dataset.messageText = message;
     if(messageId) row.dataset.messageId = messageId;
-    row.onclick = ()=>{ if(timeoutModeActive) executeTimeout(userId, displayName, row); };
+    row.onclick = ()=>{
+      if(timeoutModeActive) executeTimeout(userId, displayName, row);
+    };
 
     const statusIcon = document.createElement('span');
     statusIcon.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
