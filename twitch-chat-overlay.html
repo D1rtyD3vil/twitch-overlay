@@ -355,8 +355,34 @@
     display:none;
   }
 
+  #emotePreviewBar{
+    display:none;
+    position:absolute; bottom:calc(100% + 12px); left:50%; transform:translateX(-50%);
+    align-items:center; gap:10px; flex-wrap:wrap;
+    max-width:90vw;
+    padding:8px 12px;
+    background: var(--panel-solid);
+    border:1px solid var(--border);
+    border-radius:10px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.45);
+    z-index:15;
+  }
+  #emotePreviewBar.visible{ display:flex; }
+  #emotePreviewBar::after{
+    content:'';
+    position:absolute; top:100%; left:50%; transform:translateX(-50%);
+    border:7px solid transparent;
+    border-top-color: var(--panel-solid);
+  }
+  #emotePreviewBar .epb-item{
+    display:flex; flex-direction:column; align-items:center; gap:2px;
+    font-size:10px; color:var(--parchment-dim);
+  }
+  #emotePreviewBar img{ width:36px; height:36px; object-fit:contain; }
+
   #chatInputBar{
     display:none;
+    position:relative;
     align-items:center; gap:8px;
     padding:8px 10px;
     background: var(--panel-solid);
@@ -384,20 +410,33 @@
   #emotePickerPopup{
     display:none;
     position:absolute; bottom:calc(100% + 6px); left:0;
-    width:260px; max-height:220px; overflow-y:auto;
+    width:270px; max-height:280px; overflow-y:auto;
     background:var(--panel-solid); border:1px solid var(--border); border-radius:6px;
     padding:8px;
-    grid-template-columns: repeat(5, 1fr);
-    gap:6px;
     z-index:20;
   }
-  #emotePickerPopup.open{ display:grid; }
+  #emotePickerPopup.open{ display:block; }
+  #emotePickerPopup .ep-category{
+    font-size:11px; font-weight:700; color:var(--gold);
+    margin:6px 0 4px 0; text-transform:uppercase; letter-spacing:0.02em;
+  }
+  #emotePickerPopup .ep-category:first-child{ margin-top:0; }
+  #emoteSearchInput{
+    width:100%; box-sizing:border-box;
+    background:#12100c; color:var(--parchment);
+    border:1px solid var(--border); border-radius:4px;
+    padding:5px 7px; font-size:12px; font-family:inherit;
+    margin-bottom:8px;
+  }
+  #emotePickerPopup .ep-grid{
+    display:grid; grid-template-columns: repeat(5, 1fr); gap:6px;
+  }
   #emotePickerPopup img{
     width:32px; height:32px; object-fit:contain;
     cursor:pointer; border-radius:4px; padding:2px;
   }
   #emotePickerPopup img:hover{ background: rgba(var(--gold-rgb),0.25); }
-  #emotePickerPopup .ep-empty{ font-size:11px; color:var(--parchment-dim); grid-column:1/-1; }
+  #emotePickerPopup .ep-empty{ font-size:11px; color:var(--parchment-dim); }
   .modchat-row{
     background: rgba(120,60,220,0.22);
     border-left:3px solid #8a4dff;
@@ -539,13 +578,17 @@
   </div>
 
   <div id="chatInputBar">
+    <div id="emotePreviewBar"></div>
     <select id="chatModeSelect" style="display:none">
       <option value="twitch">Twitch Chat</option>
       <option value="mod">🔒 Mod-Chat (nur intern)</option>
     </select>
     <div id="emotePickerWrap">
       <button id="emotePickerBtn" type="button" title="Eure Channel-Emotes">😊</button>
-      <div id="emotePickerPopup"></div>
+      <div id="emotePickerPopup">
+        <input id="emoteSearchInput" type="text" placeholder="Emotes suchen...">
+        <div id="emoteResultsContainer"></div>
+      </div>
     </div>
     <input id="chatMessageInput" type="text" placeholder="Nachricht in den Chat schreiben..." maxlength="500">
     <button id="sendChatBtn">Senden</button>
@@ -644,7 +687,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v59 · 11.09.2026';
+  const OVERLAY_VERSION = 'v62 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -686,6 +729,9 @@
     chatModeSelect: document.getElementById('chatModeSelect'),
     emotePickerBtn: document.getElementById('emotePickerBtn'),
     emotePickerPopup: document.getElementById('emotePickerPopup'),
+    emotePreviewBar: document.getElementById('emotePreviewBar'),
+    emoteSearchInput: document.getElementById('emoteSearchInput'),
+    emoteResultsContainer: document.getElementById('emoteResultsContainer'),
     sendChatBtn: document.getElementById('sendChatBtn'),
     streamViewBtn: document.getElementById('streamViewBtn'),
     eventPanelBtn: document.getElementById('eventPanelBtn'),
@@ -1244,7 +1290,7 @@
       const from = ownDisplayName || ownLogin;
       syncSend({ type: 'modChat', from: from, text: text });
       renderModChatMessage(from, text);
-      els.chatMessageInput.value = '';
+      els.chatMessageInput.value = ''; updateEmotePreviewBubble();
       return;
     }
 
@@ -1256,12 +1302,43 @@
     if(ownUserId === broadcasterId) badges.broadcaster = '1';
     else if(isMod) badges.moderator = '1';
     renderMessage({ displayName: ownDisplayName || ownLogin, userId: ownUserId, color: '', badges, message: text });
-    els.chatMessageInput.value = '';
+    els.chatMessageInput.value = ''; updateEmotePreviewBubble();
   }
   els.sendChatBtn.onclick = sendChatMessage;
   els.chatMessageInput.addEventListener('keydown', (e)=>{
     if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
   });
+  els.chatMessageInput.addEventListener('input', updateEmotePreviewBubble);
+
+  function updateEmotePreviewBubble(){
+    const words = els.chatMessageInput.value.split(/\s+/).filter(Boolean);
+    const found = [];
+    const seen = new Set();
+    words.forEach(w=>{
+      const match = channelEmotes.find(e => e.name === w);
+      if(match && !seen.has(match.name)){ seen.add(match.name); found.push(match); }
+    });
+    if(!found.length){
+      els.emotePreviewBar.classList.remove('visible');
+      els.emotePreviewBar.innerHTML = '';
+      return;
+    }
+    els.emotePreviewBar.innerHTML = '';
+    found.forEach(em=>{
+      const item = document.createElement('div');
+      item.className = 'epb-item';
+      const img = document.createElement('img');
+      img.src = em.url;
+      img.alt = em.name;
+      img.onerror = ()=>{ img.onerror = null; img.src = em.staticUrl; };
+      item.appendChild(img);
+      const label = document.createElement('span');
+      label.textContent = em.name;
+      item.appendChild(label);
+      els.emotePreviewBar.appendChild(item);
+    });
+    els.emotePreviewBar.classList.add('visible');
+  }
 
   function renderModChatMessage(from, text, opts){
     opts = opts || {};
@@ -1839,37 +1916,69 @@
       });
       if(!res.ok) return;
       const data = await res.json();
-      channelEmotes = (data.data || []).map(e => ({
-        name: e.name,
-        url: (e.images && (e.images.url_2x || e.images.url_1x)) || ''
-      })).filter(e => e.url);
+      channelEmotes = (data.data || []).map(e=>{
+        const animated = Array.isArray(e.format) && e.format.indexOf('animated') !== -1;
+        const animatedUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + e.id + '/animated/dark/2.0';
+        const staticUrl = 'https://static-cdn.jtvnw.net/emoticons/v2/' + e.id + '/static/dark/2.0';
+        let category = 'Sonstige';
+        if(e.emote_type === 'follower') category = 'Follower-Emotes';
+        else if(e.emote_type === 'bitstier') category = 'Bit-Emotes';
+        else if(e.emote_type === 'subscriptions'){
+          category = e.tier === '3000' ? 'Tier 3' : e.tier === '2000' ? 'Tier 2' : 'Tier 1';
+        }
+        return { name: e.name, url: animated ? animatedUrl : staticUrl, staticUrl, category };
+      });
       renderEmotePicker();
     }catch(e){ /* Picker bleibt dann einfach leer */ }
   }
+  const EMOTE_CATEGORY_ORDER = ['Tier 1', 'Tier 2', 'Tier 3', 'Follower-Emotes', 'Bit-Emotes', 'Sonstige'];
   function renderEmotePicker(){
-    els.emotePickerPopup.innerHTML = '';
+    const query = els.emoteSearchInput.value.trim().toLowerCase();
+    const filtered = query ? channelEmotes.filter(e => e.name.toLowerCase().includes(query)) : channelEmotes;
+    els.emoteResultsContainer.innerHTML = '';
     if(!channelEmotes.length){
       const empty = document.createElement('div');
       empty.className = 'ep-empty';
       empty.textContent = 'Keine Channel-Emotes gefunden.';
-      els.emotePickerPopup.appendChild(empty);
+      els.emoteResultsContainer.appendChild(empty);
       return;
     }
-    channelEmotes.forEach(em=>{
-      const img = document.createElement('img');
-      img.src = em.url;
-      img.alt = em.name;
-      img.title = em.name;
-      img.loading = 'lazy';
-      img.onclick = ()=>{
-        const current = els.chatMessageInput.value;
-        const sep = (current && !current.endsWith(' ')) ? ' ' : '';
-        els.chatMessageInput.value = current + sep + em.name + ' ';
-        els.chatMessageInput.focus();
-      };
-      els.emotePickerPopup.appendChild(img);
+    if(!filtered.length){
+      const empty = document.createElement('div');
+      empty.className = 'ep-empty';
+      empty.textContent = 'Kein Emote passt zu "' + query + '".';
+      els.emoteResultsContainer.appendChild(empty);
+      return;
+    }
+    EMOTE_CATEGORY_ORDER.forEach(cat=>{
+      const emotesInCat = filtered.filter(e => e.category === cat);
+      if(!emotesInCat.length) return;
+      const header = document.createElement('div');
+      header.className = 'ep-category';
+      header.textContent = cat;
+      els.emoteResultsContainer.appendChild(header);
+      const grid = document.createElement('div');
+      grid.className = 'ep-grid';
+      emotesInCat.forEach(em=>{
+        const img = document.createElement('img');
+        img.src = em.url;
+        img.alt = em.name;
+        img.title = em.name;
+        img.loading = 'lazy';
+        img.onerror = ()=>{ img.onerror = null; img.src = em.staticUrl; };
+        img.onclick = ()=>{
+          const current = els.chatMessageInput.value;
+          const sep = (current && !current.endsWith(' ')) ? ' ' : '';
+          els.chatMessageInput.value = current + sep + em.name + ' ';
+          els.chatMessageInput.focus();
+        };
+        grid.appendChild(img);
+      });
+      els.emoteResultsContainer.appendChild(grid);
     });
   }
+  els.emoteSearchInput.addEventListener('input', renderEmotePicker);
+  els.emoteSearchInput.addEventListener('click', (e)=> e.stopPropagation());
   els.emotePickerBtn.onclick = (e)=>{
     e.stopPropagation();
     els.emotePickerPopup.classList.toggle('open');
