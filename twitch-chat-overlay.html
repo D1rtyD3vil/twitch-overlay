@@ -753,7 +753,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v84 · 11.09.2026';
+  const OVERLAY_VERSION = 'v85 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -914,20 +914,23 @@
   // gemeinsam, sortiert nach Zeitstempel.
   let pendingRegularHistory = null; // null = noch nicht angekommen
   let pendingModChatHistory = null;
+  let channelEmotesLoaded = false; // Emote-Liste muss da sein, bevor der Mod-Chat-Verlauf Emotes ersetzen kann
   let mergedHistoryRendered = false;
   let mergedHistoryFallbackTimer = null;
   function scheduleMergedHistoryRender(){
     if(mergedHistoryRendered) return;
-    if(pendingRegularHistory !== null && pendingModChatHistory !== null){
+    if(pendingRegularHistory !== null && pendingModChatHistory !== null && channelEmotesLoaded){
       renderMergedHistory();
       return;
     }
-    // Falls diese Person kein Mod ist, kommt 'modChatHistoryState' nie — nach kurzer Wartezeit trotzdem starten
+    // Falls diese Person kein Mod ist (kommt 'modChatHistoryState' nie) oder die Emote-Liste mal nicht lädt —
+    // nach kurzer Wartezeit trotzdem starten, lieber ohne Emote-Bildchen als gar keine Wiedergabe
     if(!mergedHistoryFallbackTimer){
       mergedHistoryFallbackTimer = setTimeout(()=>{
         if(pendingModChatHistory === null) pendingModChatHistory = [];
+        channelEmotesLoaded = true;
         renderMergedHistory();
-      }, 2000);
+      }, 3000);
     }
   }
   function renderMergedHistory(){
@@ -1430,6 +1433,8 @@
 
       await fetchChannelBadges();
       await fetchChannelEmotes();
+      channelEmotesLoaded = true;
+      scheduleMergedHistoryRender();
       if(subscriberBadgeTierMap.size > 0) setTierStatus('aktiv ✓');
       else if(subscriptionsAvailable) setTierStatus('aktiv ✓ (im Chat aber nur generisches "Sub"-Badge, keine Tier-Badge-Daten im Kanal gefunden)');
       else setTierStatus('aktiv (nur generisches "Sub"-Badge sichtbar)');
