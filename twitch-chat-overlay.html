@@ -107,6 +107,32 @@
   #modToolbar button.active{ background: var(--gold); color:#1a0f00; font-weight:700; }
   #timeoutStatus{ opacity:0.9; font-style:italic; }
 
+  /* ---------- Event-Liste + Chat nebeneinander ---------- */
+  #mainArea{
+    display:flex; flex-direction:row;
+    flex:1; min-height:0;
+  }
+  #eventPanel{
+    display:none;
+    width:230px; flex:0 0 230px;
+    overflow-y:auto;
+    border-right:1px solid var(--border);
+    background:var(--panel-solid);
+    padding:8px;
+  }
+  #eventPanel.open{ display:block; }
+  .event-entry{
+    font-size:12px;
+    color:var(--parchment);
+    padding:5px 6px;
+    margin-bottom:4px;
+    border-radius:4px;
+    background:var(--panel);
+    border-left:2px solid var(--gold);
+    line-height:1.35;
+  }
+  .event-entry .ee-time{ color:var(--parchment-dim); font-size:10px; display:block; margin-top:2px; }
+
   /* ---------- Chat ---------- */
   #chat{
     flex:1;
@@ -280,6 +306,7 @@
     <button id="resetAllSessionBtn" style="display:none" title="Setzt die Begrüßungs-Session für dich und alle anderen zurück (läuft normalerweise automatisch beim ersten Verbinden pro Tag — dieser Knopf ist nur fürs Sicherheitsnetz da, z.B. bei einem 2. Stream am selben Tag)">Neue Session für alle</button>
     <button id="modViewBtn" style="display:none">🛡 Mod-Ansicht</button>
     <button id="streamViewBtn">📺 Stream</button>
+    <button id="eventPanelBtn">📋 Events</button>
     <span id="versionLabel" style="margin-left:auto; opacity:0.5; font-size:11px;"></span>
   </div>
 
@@ -348,8 +375,11 @@
     </div>
   </div>
 
-  <div id="chat">
-    <div id="emptyHint">Noch keine Nachrichten. Channel eintragen und „Chat verbinden" klicken.</div>
+  <div id="mainArea">
+    <div id="eventPanel"></div>
+    <div id="chat">
+      <div id="emptyHint">Noch keine Nachrichten. Channel eintragen und „Chat verbinden" klicken.</div>
+    </div>
   </div>
 
   <div id="chatInputBar">
@@ -442,7 +472,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v42 · 11.09.2026';
+  const OVERLAY_VERSION = 'v46 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -476,6 +506,8 @@
     chatModeSelect: document.getElementById('chatModeSelect'),
     sendChatBtn: document.getElementById('sendChatBtn'),
     streamViewBtn: document.getElementById('streamViewBtn'),
+    eventPanelBtn: document.getElementById('eventPanelBtn'),
+    eventPanel: document.getElementById('eventPanel'),
     streamContainer: document.getElementById('streamContainer'),
     streamFrame: document.getElementById('streamFrame'),
     userCardBackdrop: document.getElementById('userCardBackdrop'),
@@ -573,6 +605,10 @@
             updateRenderedTiers([id]);
           }
         });
+        (msg.history || []).forEach(item=>{
+          if(item.t === 'chat') renderMessage(item, { isReplay: true });
+          else if(item.t === 'modchat') renderModChatMessage(item.from, item.text);
+        });
       } else if(msg.type === 'greetUpdate'){
         if(msg.greeted) greetedUsers.add(msg.userId); else greetedUsers.delete(msg.userId);
         persistGreeted();
@@ -595,6 +631,8 @@
         removeAutomodHold(msg.id);
       } else if(msg.type === 'modChatMessage'){
         renderModChatMessage(msg.from, msg.text);
+      } else if(msg.type === 'followEvent'){
+        renderAlert(msg.userName + ' folgt jetzt! 💜');
       }
     };
     syncWs.onclose = ()=>{ setTimeout(connectSyncServer, 4000); };
@@ -1190,6 +1228,9 @@
   }
 
   function renderAlert(text, extraMsg, extraEmotes){
+    addEventEntry(text);
+    if(els.eventPanel.classList.contains('open')) return; // Eventliste an -> Subs/Gifts/Raids nicht zusätzlich im Chat, kein Spam
+
     const row = document.createElement('div');
     row.className = 'chat-row alert-row';
     const icon = document.createElement('span');
@@ -1211,6 +1252,23 @@
     messageHistory.push(row.outerHTML);
     if(messageHistory.length > MAX_ROWS) messageHistory.shift();
     persistHistory();
+  }
+
+  // ---------- Event-Liste (kompakte Übersicht: Subs/Resubs/Gifts/Raids/Bits) ----------
+  const MAX_EVENT_ENTRIES = 60;
+  els.eventPanelBtn.onclick = ()=>{ els.eventPanel.classList.toggle('open'); };
+  function addEventEntry(text){
+    const entry = document.createElement('div');
+    entry.className = 'event-entry';
+    entry.textContent = text;
+    const timeEl = document.createElement('span');
+    timeEl.className = 'ee-time';
+    timeEl.textContent = new Date().toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+    entry.appendChild(timeEl);
+    els.eventPanel.insertBefore(entry, els.eventPanel.firstChild);
+    while(els.eventPanel.children.length > MAX_EVENT_ENTRIES){
+      els.eventPanel.removeChild(els.eventPanel.lastChild);
+    }
   }
 
   function handleUserState(line){
@@ -1264,6 +1322,9 @@
     const emotes = parseEmoteTag(tags['emotes'] || '');
     applyBadgeTier(userId, badges);
     const cleaned = stripActionWrapper(message, emotes);
+    if(tags['bits'] && parseInt(tags['bits'], 10) > 0){
+      addEventEntry(displayName + ' hat ' + tags['bits'] + ' Bits gecheert 💎');
+    }
     renderMessage({ displayName, userId, color, badges, message: cleaned.message, emotes: cleaned.emotes });
   }
 
@@ -1386,7 +1447,8 @@
     }));
   }
 
-  function renderMessage({ displayName, userId, color, badges, message, emotes }){
+  function renderMessage({ displayName, userId, color, badges, message, emotes }, opts){
+    opts = opts || {};
     const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber') || Object.prototype.hasOwnProperty.call(badges, 'founder');
     const greeting = isGreetingMessage(message);
     const alreadyGreeted = greetedUsers.has(userId);
@@ -1466,6 +1528,12 @@
     messageHistory.push(row.outerHTML);
     if(messageHistory.length > MAX_ROWS) messageHistory.shift();
     persistHistory();
+
+    // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
+    // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
+    if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
+      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes } });
+    }
   }
 
   function persistHistory(){
