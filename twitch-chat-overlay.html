@@ -223,6 +223,32 @@
   }
   .event-entry .ee-time{ color:var(--parchment-dim); font-size:10px; display:block; margin-top:2px; }
 
+  /* Kategorien: verschiedene Event-Arten farblich unterscheidbar */
+  .event-entry.cat-sub{ border-left-color: var(--gold); }
+  .event-entry.cat-gift{ border-left-color: #22c55e; }
+  .event-entry.cat-raid{ border-left-color: #fb923c; }
+  .event-entry.cat-bits{ border-left-color: #a78bfa; }
+  .event-entry.cat-streak{ border-left-color: #f97316; }
+  .event-entry.cat-follow{ border-left-color: #c084fc; }
+
+  /* Gewichtung: höherer Wert (Tier/Anzahl/Bits/Raid-Größe) = sichtbar auffälliger, aber dezent gestuft */
+  .event-entry.weight-1{
+    border-left-width:4px;
+    font-weight:600;
+  }
+  .event-entry.weight-2{
+    border-left-width:6px;
+    font-weight:700;
+    font-size:13px;
+    box-shadow: 0 0 8px -1px currentColor;
+  }
+  .event-entry.cat-sub.weight-1, .event-entry.cat-sub.weight-2{ color:#ffe9a8; }
+  .event-entry.cat-gift.weight-1, .event-entry.cat-gift.weight-2{ color:#86efac; }
+  .event-entry.cat-raid.weight-1, .event-entry.cat-raid.weight-2{ color:#fed7aa; }
+  .event-entry.cat-bits.weight-1, .event-entry.cat-bits.weight-2{ color:#ddd6fe; }
+  .event-entry.cat-streak.weight-1, .event-entry.cat-streak.weight-2{ color:#fdba74; }
+
+
   /* ---------- Chat ---------- */
   #chat{
     flex:1;
@@ -328,6 +354,14 @@
   }
   .chat-row.alert-row.alert-hidden-by-panel{ display:none; }
   .alert-icon{ flex:0 0 auto; color: var(--gold); }
+
+  .chat-row.alert-row.cat-gift{ background: linear-gradient(90deg, rgba(34,197,94,0.35), rgba(34,197,94,0.06)); border-left-color:#22c55e; }
+  .chat-row.alert-row.cat-raid{ background: linear-gradient(90deg, rgba(251,146,60,0.35), rgba(251,146,60,0.06)); border-left-color:#fb923c; }
+  .chat-row.alert-row.cat-bits{ background: linear-gradient(90deg, rgba(167,139,250,0.35), rgba(167,139,250,0.06)); border-left-color:#a78bfa; }
+  .chat-row.alert-row.cat-streak{ background: linear-gradient(90deg, rgba(249,115,22,0.35), rgba(249,115,22,0.06)); border-left-color:#f97316; }
+  .chat-row.alert-row.cat-follow{ background: linear-gradient(90deg, rgba(192,132,252,0.35), rgba(192,132,252,0.06)); border-left-color:#c084fc; }
+  .chat-row.alert-row.weight-1{ border-left-width:4px; font-weight:600; }
+  .chat-row.alert-row.weight-2{ border-left-width:6px; font-weight:700; }
   .alert-text{ color: var(--parchment); font-weight:600; }
 
   .automod-card{
@@ -884,7 +918,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.5.6 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.7.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1131,7 +1165,7 @@
           hasReplayedHistory = true;
           pendingRegularHistory = msg.history || [];
           (msg.eventHistory || []).forEach(item=>{
-            addEventEntry(item.text, item.ts);
+            addEventEntry(item.text, item.ts, item.category, item.weight);
           });
           scheduleMergedHistoryRender();
         }
@@ -1173,7 +1207,7 @@
           scheduleMergedHistoryRender();
         }
       } else if(msg.type === 'followEvent'){
-        renderAlert(msg.userName + ' folgt jetzt! 💜');
+        renderAlert(escapeHtml(msg.userName) + ' folgt jetzt! 💜', null, null, { category: 'follow', weight: 0 });
       } else if(msg.type === 'modRoster'){
         renderModRoster(msg.roster || []);
       } else if(msg.type === 'versionNotice'){
@@ -2122,7 +2156,7 @@
     // Einzelne (nicht per Massen-Gift-Funktion verschenkte) Gifts selbst zusammenfassen,
     // damit 5+ schnelle Einzel-Gifts derselben Person nicht als 5+ Zeilen auftauchen
     if((msgId === 'subgift' || msgId === 'anonsubgift') && !tags['msg-param-community-gift-id']){
-      const gifterName = msgId === 'anonsubgift' ? 'Jemand' : (tags['display-name'] || tags['login'] || 'Jemand');
+      const gifterName = escapeHtml(msgId === 'anonsubgift' ? 'Jemand' : (tags['display-name'] || tags['login'] || 'Jemand'));
       const tierWordVal = tierWord(tags['msg-param-sub-plan']);
       const tierLabel = tierWordVal === 'Prime' ? 'Prime' : ('T' + tierWordVal);
       bumpGiftGroup(gifterName, tierLabel);
@@ -2141,7 +2175,8 @@
         if(msgIdx !== -1) extraMsg = afterNotice.substring(msgIdx + 2);
       }
       const extraEmotes = parseEmoteTag(tags['emotes'] || '');
-      renderAlert(alertText, extraMsg, extraEmotes);
+      const meta = computeAlertMeta(tags);
+      renderAlert(alertText, extraMsg, extraEmotes, { category: meta.category, weight: meta.weight });
     }
   }
 
@@ -2153,29 +2188,30 @@
   }
 
   function buildGermanAlertText(tags){
-    const name = tags['display-name'] || tags['login'] || 'Jemand';
+    const esc = s => (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const name = esc(tags['display-name'] || tags['login'] || 'Jemand');
     const tier = tierWord(tags['msg-param-sub-plan']);
-    const tierLabel = tier === 'Prime' ? 'Prime' : ('Tier ' + tier);
+    const tierLabel = '<b>' + (tier === 'Prime' ? 'Prime' : ('Tier ' + tier)) + '</b>';
     switch(tags['msg-id']){
       case 'sub':
         return name + ' hat gerade mit ' + tierLabel + ' abonniert! 🎉';
       case 'resub': {
-        const cumulative = tags['msg-param-cumulative-months'] || tags['msg-param-months'] || '?';
+        const cumulative = esc(tags['msg-param-cumulative-months'] || tags['msg-param-months'] || '?');
         const streak = tags['msg-param-streak-months'];
-        const streakPart = streak && streak !== '0' ? ' (' + streak + ' Monate am Stück)' : '';
-        return name + ' ist seit ' + cumulative + ' Monaten dabei' + streakPart + ' — ' + tierLabel + '! 🎉';
+        const streakPart = streak && streak !== '0' ? ' (' + esc(streak) + ' Monate am Stück)' : '';
+        return name + ' ist seit <b>' + cumulative + ' Monaten</b> dabei' + streakPart + ' — ' + tierLabel + '! 🎉';
       }
       case 'subgift':
         // Teil einer Massen-Gift-Welle? -> nicht einzeln anzeigen, das übernimmt die "submysterygift"-Sammelzeile
         if(tags['msg-param-community-gift-id']) return null;
-        return name + ' hat ' + (tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
+        return name + ' hat ' + esc(tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
       case 'anonsubgift':
         if(tags['msg-param-community-gift-id']) return null;
-        return 'Jemand hat ' + (tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
+        return 'Jemand hat ' + esc(tags['msg-param-recipient-display-name'] || tags['msg-param-recipient-user-name'] || 'jemandem') + ' ein ' + tierLabel + ' Abo geschenkt! 🎁';
       case 'submysterygift': {
-        const count = tags['msg-param-mass-gift-count'] || '?';
+        const count = esc(tags['msg-param-mass-gift-count'] || '?');
         const total = tags['msg-param-sender-count'];
-        return name + ' verschenkt ' + count + ' ' + tierLabel + ' Abos an die Community!' + (total ? ' (insgesamt ' + total + ' im Kanal verschenkt)' : '') + ' 🎁';
+        return name + ' verschenkt <b>' + count + '</b> ' + tierLabel + ' Abos an die Community!' + (total ? ' (insgesamt ' + esc(total) + ' im Kanal verschenkt)' : '') + ' 🎁';
       }
       case 'giftpaidupgrade':
         return name + ' hat sein geschenktes Abo in ein bezahltes umgewandelt! 💛';
@@ -2184,17 +2220,21 @@
       case 'primepaidupgrade':
         return name + ' hat von Prime auf ' + tierLabel + ' umgestellt! 💛';
       case 'raid':
-        return name + ' raidet mit ' + (tags['msg-param-viewerCount'] || '?') + ' Zuschauern rein! 🚀';
+        return name + ' raidet mit <b>' + esc(tags['msg-param-viewerCount'] || '?') + ' Zuschauern</b> rein! 🚀';
       case 'bitsbadgetier':
-        return name + ' hat die ' + (tags['msg-param-threshold'] || '') + '-Bits-Marke geknackt! 💎';
+        return name + ' hat die <b>' + esc(tags['msg-param-threshold'] || '') + '-Bits-Marke</b> geknackt! 💎';
       case 'viewermilestone': {
-        if(tags['msg-param-category'] !== 'watch-streak') return unescapeIrcTagValue(tags['system-msg']);
-        const streakCount = tags['msg-param-value'] || '?';
+        if(tags['msg-param-category'] !== 'watch-streak') return escapeHtml(unescapeIrcTagValue(tags['system-msg']));
+        const streakNum = parseInt(tags['msg-param-value'], 10) || 0;
+        const streakCount = streakNum || (tags['msg-param-value'] || '?');
         const reward = tags['msg-param-copoReward'];
-        return name + ' hat ' + streakCount + ' Streams in Folge geschaut und einen Watch-Streak gestartet! 🔥' + (reward ? ' (+' + reward + ' Punkte)' : '');
+        // Watch-Streaks sind weniger wichtig als Subs/Gifts — nur bei runden 100er-Marken optisch "aufwerten"
+        const isMilestone = streakNum > 0 && streakNum % 100 === 0;
+        const countPart = isMilestone ? '<b>' + streakCount + ' Streams in Folge</b>' : (streakCount + ' Streams in Folge');
+        return name + ' hat ' + countPart + ' geschaut und einen Watch-Streak gestartet! 🔥' + (reward ? ' (+' + esc(reward) + ' Punkte)' : '');
       }
       default:
-        return unescapeIrcTagValue(tags['system-msg']); // Fallback: Twitchs Original-Text (Englisch), falls Typ unbekannt
+        return escapeHtml(unescapeIrcTagValue(tags['system-msg'])); // Fallback: Twitchs Original-Text (Englisch), falls Typ unbekannt
     }
   }
 
@@ -2206,24 +2246,24 @@
   function renderAlert(text, extraMsg, extraEmotes, opts){
     opts = opts || {};
     const ts = opts.ts || Date.now();
-    addEventEntry(text, ts);
+    addEventEntry(text, ts, opts.category, opts.weight);
     if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
-      syncSend({ type: 'historyAdd', item: { t: 'alert', text: text, ts: ts } });
+      syncSend({ type: 'historyAdd', item: { t: 'alert', text: text, ts: ts, category: opts.category, weight: opts.weight } });
     }
     if(els.eventPanel.classList.contains('open')) return; // Eventliste an -> Subs/Gifts/Raids nicht zusätzlich im Chat, kein Spam
-    insertAlertChatRow(text, extraMsg, extraEmotes);
+    insertAlertChatRow(text, extraMsg, extraEmotes, opts.category, opts.weight);
   }
 
-  function insertAlertChatRow(text, extraMsg, extraEmotes){
+  function insertAlertChatRow(text, extraMsg, extraEmotes, category, weight){
     const row = document.createElement('div');
-    row.className = 'chat-row alert-row';
+    row.className = 'chat-row alert-row' + (category ? ' cat-' + category : '') + (weight ? ' weight-' + weight : '');
     const icon = document.createElement('span');
     icon.className = 'alert-icon';
     icon.textContent = '★';
     row.appendChild(icon);
     const textSpan = document.createElement('span');
     textSpan.className = 'alert-text';
-    let html = escapeHtml(text);
+    let html = text; // bereits sicher aufgebautes HTML (mit Fett-Markierung) aus buildGermanAlertText o.ä. — nicht nochmal escapen
     if(extraMsg) html += '  „' + buildMessageHtml(extraMsg, extraEmotes) + '"';
     textSpan.innerHTML = html;
     row.appendChild(textSpan);
@@ -2253,11 +2293,11 @@
          + d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
   }
 
-  function addEventEntry(text, ts){
+  function addEventEntry(text, ts, category, weight){
     ts = ts || Date.now();
     const entry = document.createElement('div');
-    entry.className = 'event-entry';
-    entry.textContent = text;
+    entry.className = 'event-entry' + (category ? ' cat-' + category : '') + (weight ? ' weight-' + weight : '');
+    entry.innerHTML = text;
     const timeEl = document.createElement('span');
     timeEl.className = 'ee-time';
     timeEl.textContent = formatEventTime(ts);
@@ -2268,6 +2308,33 @@
     }
   }
 
+  function computeAlertMeta(tags){
+    const tier = tags['msg-param-sub-plan'];
+    const tierWeight = tier === '3000' ? 2 : tier === '2000' ? 1 : 0;
+    switch(tags['msg-id']){
+      case 'sub': case 'resub':
+      case 'giftpaidupgrade': case 'anongiftpaidupgrade': case 'primepaidupgrade':
+        return { category: 'sub', weight: tierWeight };
+      case 'subgift': case 'anonsubgift':
+        return { category: 'gift', weight: tierWeight };
+      case 'submysterygift': {
+        const count = parseInt(tags['msg-param-mass-gift-count'], 10) || 1;
+        const countWeight = count >= 10 ? 2 : count >= 5 ? 1 : 0;
+        return { category: 'gift', weight: Math.max(tierWeight, countWeight) };
+      }
+      case 'raid': {
+        const viewers = parseInt(tags['msg-param-viewerCount'], 10) || 0;
+        return { category: 'raid', weight: viewers >= 50 ? 2 : viewers >= 10 ? 1 : 0 };
+      }
+      case 'bitsbadgetier':
+        return { category: 'bits', weight: 1 };
+      case 'viewermilestone':
+        return { category: 'streak', weight: 0 };
+      default:
+        return { category: 'other', weight: 0 };
+    }
+  }
+
   // Einzel-Gifts (kein offizielles Massen-Gift) derselben Person kurz sammeln statt spammen
   const pendingGiftGroups = new Map(); // gifterName -> { count, el, tierLabel, timeout }
   const GIFT_GROUP_WINDOW_MS = 8000;
@@ -2275,13 +2342,13 @@
     let g = pendingGiftGroups.get(gifterName);
     if(!g){
       const el = document.createElement('div');
-      el.className = 'event-entry';
+      el.className = 'event-entry cat-gift';
       els.eventPanel.insertBefore(el, els.eventPanel.firstChild);
       g = { count: 0, el: el, tierLabel: tierLabel };
       pendingGiftGroups.set(gifterName, g);
     }
     g.count++;
-    g.el.textContent = gifterName + ' verschenkt gerade ' + g.tierLabel + '-Abos... (' + g.count + ') 🎁';
+    g.el.innerHTML = gifterName + ' verschenkt gerade ' + g.tierLabel + '-Abos... (<b>' + g.count + '</b>) 🎁';
     if(g.timeout) clearTimeout(g.timeout);
     g.timeout = setTimeout(()=> finalizeGiftGroup(gifterName), GIFT_GROUP_WINDOW_MS);
   }
@@ -2290,8 +2357,10 @@
     if(!g) return;
     pendingGiftGroups.delete(gifterName);
     const ts = Date.now();
-    const finalText = gifterName + ' hat ' + g.count + ' ' + (g.count === 1 ? 'Abo' : 'Abos') + ' verschenkt! 🎁';
-    g.el.textContent = finalText;
+    const weight = g.count >= 10 ? 2 : g.count >= 5 ? 1 : 0;
+    const finalText = gifterName + ' hat <b>' + g.count + ' ' + (g.count === 1 ? 'Abo' : 'Abos') + '</b> verschenkt! 🎁';
+    g.el.innerHTML = finalText;
+    if(weight) g.el.classList.add('weight-' + weight);
     const timeEl = document.createElement('span');
     timeEl.className = 'ee-time';
     timeEl.textContent = formatEventTime(ts);
@@ -2300,10 +2369,10 @@
       els.eventPanel.removeChild(els.eventPanel.lastChild);
     }
     if(ownUserId && ownUserId === broadcasterId){
-      syncSend({ type: 'historyAdd', item: { t: 'alert', text: finalText, ts: ts } });
+      syncSend({ type: 'historyAdd', item: { t: 'alert', text: finalText, ts: ts, category: 'gift', weight: weight } });
     }
     if(!els.eventPanel.classList.contains('open')){
-      insertAlertChatRow(finalText, null, null);
+      insertAlertChatRow(finalText, null, null, 'gift', weight);
     }
   }
 
@@ -2363,7 +2432,9 @@
     applyBadgeTier(userId, badges);
     const cleaned = stripActionWrapper(message, emotes);
     if(tags['bits'] && parseInt(tags['bits'], 10) > 0){
-      addEventEntry(displayName + ' hat ' + tags['bits'] + ' Bits gecheert 💎');
+      const bitsAmount = parseInt(tags['bits'], 10) || 0;
+      const bitsWeight = bitsAmount >= 1000 ? 2 : bitsAmount >= 100 ? 1 : 0;
+      addEventEntry(escapeHtml(displayName) + ' hat <b>' + escapeHtml(tags['bits']) + ' Bits</b> gecheert 💎', Date.now(), 'bits', bitsWeight);
     }
     let replyTo = null;
     if(tags['reply-parent-msg-id']){
