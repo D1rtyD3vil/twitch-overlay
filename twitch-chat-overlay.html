@@ -248,6 +248,49 @@
     border-radius:4px; padding:6px; font-family:inherit; font-size:12px; box-sizing:border-box;
   }
 
+  #emergencyComposeBackdrop{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:80;
+    align-items:center; justify-content:center;
+  }
+  #emergencyComposeBackdrop.open{ display:flex; }
+  #emergencyComposeBox{
+    background:var(--panel-solid); border:2px solid #dc2626; border-radius:10px;
+    padding:20px; width:320px; max-width:88vw;
+  }
+  #emergencyComposeBox h3{ margin:0 0 10px 0; color:#f87171; }
+  #emergencyComposeText{
+    width:100%; height:70px; resize:vertical; box-sizing:border-box;
+    background:var(--ink); color:var(--parchment); border:1px solid var(--border);
+    border-radius:4px; padding:6px; font-family:inherit; font-size:13px;
+  }
+  .ec-targets{ display:flex; flex-direction:column; gap:4px; margin:10px 0; font-size:12px; }
+  .ec-buttons{ display:flex; gap:8px; }
+  .ec-buttons button{ flex:1; padding:8px; border-radius:5px; border:none; cursor:pointer; font-weight:700; font-size:13px; }
+  #emergencySendBtn{ background:#dc2626; color:#fff; }
+  #emergencyCancelBtn{ background:var(--ink); color:var(--parchment); border:1px solid var(--border) !important; }
+
+  #emergencyAlertBackdrop{
+    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); z-index:90;
+    align-items:center; justify-content:center;
+  }
+  #emergencyAlertBackdrop.open{ display:flex; }
+  #emergencyAlertBox{
+    background:#1a0505; border:4px solid #dc2626; border-radius:12px;
+    padding:28px; width:380px; max-width:90vw; text-align:center;
+    box-shadow:0 0 40px rgba(220,38,38,0.6);
+    animation: emergency-pulse 1s ease-in-out infinite;
+  }
+  @keyframes emergency-pulse{
+    0%, 100% { box-shadow:0 0 30px rgba(220,38,38,0.5); }
+    50% { box-shadow:0 0 55px rgba(220,38,38,0.9); }
+  }
+  #emergencyAlertFrom{ font-size:12px; color:#fca5a5; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:8px; }
+  #emergencyAlertText{ font-size:18px; font-weight:700; color:#fff; margin-bottom:18px; line-height:1.4; word-break:break-word; }
+  #emergencyAlertDismissBtn{
+    background:#dc2626; color:#fff; border:none; border-radius:6px;
+    padding:10px 18px; font-weight:700; cursor:pointer; font-size:13px;
+  }
+
 
   #modRosterDisplay{
     margin-left:auto; font-size:12px;
@@ -824,6 +867,7 @@
       <div id="streamToolsMenu">
         <button id="openTimerBtn" type="button">⏱ Stoppuhr / Timer</button>
         <button id="openNotepadBtn" type="button">📝 Notizblock</button>
+        <button id="openEmergencyBtn" type="button">🚨 Notfall-Nachricht</button>
       </div>
     </div>
     <span id="timeoutStatus"></span>
@@ -955,6 +999,30 @@
     </div>
   </div>
 
+  <div id="emergencyComposeBackdrop">
+    <div id="emergencyComposeBox">
+      <h3>🚨 Notfall-Nachricht</h3>
+      <textarea id="emergencyComposeText" placeholder="Was ist los?" maxlength="200"></textarea>
+      <div class="ec-targets">
+        <label style="flex-direction:row; align-items:center; gap:4px;"><input type="radio" name="emergencyTarget" value="mods" style="width:auto;" checked> Andere Mods</label>
+        <label style="flex-direction:row; align-items:center; gap:4px;"><input type="radio" name="emergencyTarget" value="streamer" style="width:auto;"> Streamer</label>
+        <label style="flex-direction:row; align-items:center; gap:4px;"><input type="radio" name="emergencyTarget" value="both" style="width:auto;"> Beide</label>
+      </div>
+      <div class="ec-buttons">
+        <button id="emergencySendBtn" type="button">🚨 Jetzt senden</button>
+        <button id="emergencyCancelBtn" type="button">Abbrechen</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="emergencyAlertBackdrop">
+    <div id="emergencyAlertBox">
+      <div id="emergencyAlertFrom"></div>
+      <div id="emergencyAlertText"></div>
+      <button id="emergencyAlertDismissBtn" type="button">Verstanden — wegklicken</button>
+    </div>
+  </div>
+
   <div id="chatInputBar">
     <div id="emotePreviewBar"></div>
     <select id="chatModeSelect" style="display:none">
@@ -1079,7 +1147,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.12.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.13.1 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1139,6 +1207,15 @@
     timerResetBtn: document.getElementById('timerResetBtn'),
     notepadWidget: document.getElementById('notepadWidget'),
     notepadTextarea: document.getElementById('notepadTextarea'),
+    openEmergencyBtn: document.getElementById('openEmergencyBtn'),
+    emergencyComposeBackdrop: document.getElementById('emergencyComposeBackdrop'),
+    emergencyComposeText: document.getElementById('emergencyComposeText'),
+    emergencySendBtn: document.getElementById('emergencySendBtn'),
+    emergencyCancelBtn: document.getElementById('emergencyCancelBtn'),
+    emergencyAlertBackdrop: document.getElementById('emergencyAlertBackdrop'),
+    emergencyAlertFrom: document.getElementById('emergencyAlertFrom'),
+    emergencyAlertText: document.getElementById('emergencyAlertText'),
+    emergencyAlertDismissBtn: document.getElementById('emergencyAlertDismissBtn'),
     chatInputBar: document.getElementById('chatInputBar'),
     chatMessageInput: document.getElementById('chatMessageInput'),
     chatModeSelect: document.getElementById('chatModeSelect'),
@@ -1374,6 +1451,10 @@
         insertSessionDivider('Streamstart — alte Begrüßungen zurückgesetzt');
       } else if(msg.type === 'timerUpdate'){
         applyTimerState(msg.state);
+      } else if(msg.type === 'emergencyMessage'){
+        els.emergencyAlertFrom.textContent = '🚨 Notfall von ' + msg.from;
+        els.emergencyAlertText.textContent = msg.text;
+        els.emergencyAlertBackdrop.classList.add('open');
       } else if(msg.type === 'loginNotice'){
         els.loginNoticeBubble.textContent = '🟢 ' + msg.name + ' eingeloggt';
         els.loginNoticeBubble.classList.add('open');
@@ -1754,6 +1835,7 @@
   function makeDraggable(widget, handle){
     let dragging = false, offX = 0, offY = 0;
     handle.addEventListener('mousedown', (e)=>{
+      if(e.target.closest('.fw-close')) return; // Schließen-Knopf soll nicht zum Ziehen führen
       dragging = true;
       const rect = widget.getBoundingClientRect();
       offX = e.clientX - rect.left;
@@ -1779,8 +1861,8 @@
       try{ const p = JSON.parse(savedPos); widget.style.left = p.left; widget.style.top = p.top; }catch(e){}
     }
   }
-  makeDraggable(els.timerWidget, els.timerWidget.querySelector('.fw-drag-handle'));
-  makeDraggable(els.notepadWidget, els.notepadWidget.querySelector('.fw-drag-handle'));
+  makeDraggable(els.timerWidget, els.timerWidget.querySelector('.fw-header'));
+  makeDraggable(els.notepadWidget, els.notepadWidget.querySelector('.fw-header'));
 
   document.querySelectorAll('.fw-close').forEach(btn=>{
     btn.onclick = ()=>{ document.getElementById(btn.dataset.target).classList.remove('open'); };
@@ -1788,6 +1870,27 @@
 
   els.openTimerBtn.onclick = ()=>{ els.timerWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); };
   els.openNotepadBtn.onclick = ()=>{ els.notepadWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); };
+
+  // ---------- Notfall-Nachricht ----------
+  els.openEmergencyBtn.onclick = ()=>{
+    els.emergencyComposeBackdrop.classList.add('open');
+    els.streamToolsMenu.classList.remove('open');
+    els.emergencyComposeText.focus();
+  };
+  els.emergencyCancelBtn.onclick = ()=>{
+    els.emergencyComposeBackdrop.classList.remove('open');
+    els.emergencyComposeText.value = '';
+  };
+  els.emergencySendBtn.onclick = ()=>{
+    const text = els.emergencyComposeText.value.trim();
+    if(!text) return;
+    const target = document.querySelector('input[name="emergencyTarget"]:checked').value;
+    const from = ownDisplayName || ownLogin || 'Jemand';
+    syncSend({ type: 'emergencyMessage', text: text, target: target, from: from });
+    els.emergencyComposeBackdrop.classList.remove('open');
+    els.emergencyComposeText.value = '';
+  };
+  els.emergencyAlertDismissBtn.onclick = ()=>{ els.emergencyAlertBackdrop.classList.remove('open'); };
 
   // Notizblock: rein lokal, nicht synchronisiert
   els.notepadTextarea.value = localStorage.getItem('ligaChatOverlayNotepad') || '';
