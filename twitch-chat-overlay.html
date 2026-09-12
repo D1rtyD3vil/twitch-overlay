@@ -629,6 +629,7 @@
   #emotePickerPopup img:hover{ background: rgba(var(--gold-rgb),0.25); }
   #emotePickerPopup .ep-empty{ font-size:11px; color:var(--parchment-dim); }
   .modchat-row{
+    display:flex; align-items:baseline; flex-wrap:wrap;
     background: rgba(120,60,220,0.22);
     border-left:3px solid #8a4dff;
     border-radius:5px;
@@ -939,7 +940,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.9.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.9.1 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1148,7 +1149,7 @@
     combined.sort((a,b)=> a.ts - b.ts);
     combined.forEach(entry=>{
       if(entry.kind === 'chat') renderMessage(entry.data, { isReplay: true });
-      else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, color: entry.data.color, replyTo: entry.data.replyTo, isReplay: true });
+      else renderModChatMessage(entry.data.from, entry.data.text, { scope: entry.data.scope, color: entry.data.color, replyTo: entry.data.replyTo, ts: entry.data.ts, isReplay: true });
     });
     // Beim ersten Laden/F5 immer ans Ende springen — unabhängig von der "war gerade unten"-Prüfung
     // pro Zeile, die zu diesem frühen Zeitpunkt (noch während des Seitenaufbaus) öfter danebenliegt.
@@ -1223,7 +1224,7 @@
         removeAutomodHold(msg.id);
       } else if(msg.type === 'modChatMessage'){
         if(msg.scope === 'mods' && !els.showModsOnlyChannel.checked) return;
-        renderModChatMessage(msg.from, msg.text, { scope: msg.scope, color: msg.color, replyTo: msg.replyTo });
+        renderModChatMessage(msg.from, msg.text, { scope: msg.scope, color: msg.color, replyTo: msg.replyTo, ts: msg.ts });
       } else if(msg.type === 'modChatHistoryState'){
         if(!hasReplayedModChatHistory){
           hasReplayedModChatHistory = true;
@@ -1755,8 +1756,9 @@
       const from = ownDisplayName || ownLogin;
       const modReplyTo = (pendingReplyTarget && pendingReplyTarget.kind === 'modchat')
         ? { displayName: pendingReplyTarget.displayName, body: pendingReplyTarget.body } : null;
-      syncSend({ type: 'modChat', from: from, text: text, scope: scope, color: ownColor, replyTo: modReplyTo });
-      renderModChatMessage(from, text, { scope: scope, color: ownColor, replyTo: modReplyTo });
+      const sendTs = Date.now();
+      syncSend({ type: 'modChat', from: from, text: text, scope: scope, color: ownColor, replyTo: modReplyTo, ts: sendTs });
+      renderModChatMessage(from, text, { scope: scope, color: ownColor, replyTo: modReplyTo, ts: sendTs });
       els.chatMessageInput.value = ''; updateEmotePreviewBubble(); localStorage.removeItem('ligaChatOverlayDraft');
       clearReplyTarget();
       return;
@@ -1888,6 +1890,11 @@
     textEl.className = 'mc-text';
     textEl.innerHTML = buildModChatMessageHtml(text);
     row.appendChild(textEl);
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'msg-time';
+    timeSpan.textContent = formatShortTime(opts.ts || Date.now());
+    row.appendChild(timeSpan);
 
     const wasNearBottom = isNearBottom();
     els.chat.appendChild(row);
