@@ -514,6 +514,15 @@
   .chat-row.timed-out{ opacity:0.45; }
   .chat-row.timed-out .message-text{ text-decoration: line-through; }
 
+  @keyframes timeout-whoosh{
+    0%   { transform: translateX(0) skewX(0deg); box-shadow: 0 0 0 0 rgba(var(--gold-rgb),0); }
+    15%  { transform: translateX(40px) skewX(-10deg); box-shadow: 0 0 14px 2px rgba(220,38,38,0.7); }
+    45%  { transform: translateX(-18px) skewX(4deg); box-shadow: 0 0 10px 1px rgba(220,38,38,0.4); }
+    70%  { transform: translateX(8px) skewX(-2deg); }
+    100% { transform: translateX(0) skewX(0deg); box-shadow: 0 0 0 0 rgba(220,38,38,0); }
+  }
+  .chat-row.timeout-whoosh{ animation: timeout-whoosh 0.55s cubic-bezier(.36,.07,.19,.97); }
+
   .chat-row.alert-row{
     background: linear-gradient(90deg, rgba(var(--gold-rgb),0.4), rgba(var(--gold-rgb),0.08));
     border-left-color: var(--gold);
@@ -1172,7 +1181,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.15.4 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.16.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -2664,6 +2673,7 @@
         if(line.indexOf('PRIVMSG') !== -1){ handlePrivmsg(line); return; }
         if(line.indexOf('USERSTATE') !== -1){ handleUserState(line); return; }
         if(line.indexOf('USERNOTICE') !== -1){ handleUserNotice(line); return; }
+        if(line.indexOf('CLEARCHAT') !== -1){ handleClearChat(line); return; }
         if(line.indexOf('NOTICE') !== -1){ handleNotice(line); return; }
       });
     };
@@ -2682,6 +2692,24 @@
       tags[key] = raw.replace(/\\s/g, ' ').replace(/\\:/g, ';').replace(/\\r/g, '\r').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
     });
     return tags;
+  }
+
+  function handleClearChat(line){
+    // Twitch schickt das an ALLE gerade verbundenen Chat-Teilnehmer gleichzeitig — dadurch von
+    // Natur aus schon synchron für jeden, der das Tool offen hat, ganz ohne unseren eigenen Server.
+    if(!line.startsWith('@')) return;
+    const spaceIdx = line.indexOf(' ');
+    const tags = parseTags(line.substring(1, spaceIdx));
+    const targetUserId = tags['target-user-id'];
+    if(!targetUserId) return; // z.B. "Chat komplett geleert" ohne bestimmte Zielperson
+    const rows = Array.from(document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(targetUserId) + '"]:not(.timed-out)'));
+    rows.forEach((row, i)=>{
+      setTimeout(()=>{
+        row.classList.add('timeout-whoosh');
+        row.classList.add('timed-out');
+        row.addEventListener('animationend', ()=>{ row.classList.remove('timeout-whoosh'); }, { once:true });
+      }, i * 90); // kleine Verzögerung pro Nachricht -> sieht wie eine Welle aus, statt dass alles gleichzeitig zuckt
+    });
   }
 
   function handleNotice(line){
