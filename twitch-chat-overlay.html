@@ -19,6 +19,7 @@
     --green:#5fae6b;
     --red:#e8432f;
     --heraldry-red:#ff1f1f;
+    --modbar-bg:#4a1015;
     --border:#3d0d0d;
     --input-bg:#12100c;
   }
@@ -174,7 +175,7 @@
     display:none;
     align-items:center; gap:10px; flex-wrap:wrap;
     padding:8px 10px;
-    background: var(--heraldry-red);
+    background: var(--modbar-bg);
     border-bottom:1px solid var(--border);
     font-size:12px;
   }
@@ -369,6 +370,7 @@
   #chat{
     flex:1;
     min-height:0;
+    min-width:0;
     overflow-y:auto;
     padding:8px 10px;
     /* bewusst KEIN display:flex + justify-content:flex-end hier — diese Kombination
@@ -389,9 +391,9 @@
   }
   .chat-row-main{
     display:flex; align-items:baseline; gap:6px; flex-wrap:nowrap;
-    min-width:0;
+    width:100%; min-width:0; box-sizing:border-box;
   }
-  .chat-row-main .message-text{ flex:1 1 auto; min-width:0; }
+  .chat-row-main .message-text{ flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
   .chat-row-main .msg-time{ flex:0 0 auto; }
   .chat-row.first-greeting{
     border-left-color: var(--gold);
@@ -682,6 +684,22 @@
     font-size:13px;
     padding:8px;
     display:none;
+  }
+
+  #mentionSuggestPopup{
+    display:none;
+    position:absolute; bottom:100%; left:0;
+    width:200px; max-height:180px; overflow-y:auto;
+    background:var(--panel-solid); border:1px solid var(--gold); border-radius:6px;
+    margin-bottom:4px;
+    z-index:16;
+  }
+  #mentionSuggestPopup.open{ display:block; }
+  #mentionSuggestPopup .ms-item{
+    padding:6px 10px; cursor:pointer; font-size:13px; color:var(--parchment);
+  }
+  #mentionSuggestPopup .ms-item.active, #mentionSuggestPopup .ms-item:hover{
+    background: rgba(var(--gold-rgb),0.25);
   }
 
   #emotePreviewBar{
@@ -1025,6 +1043,7 @@
 
   <div id="chatInputBar">
     <div id="emotePreviewBar"></div>
+    <div id="mentionSuggestPopup"></div>
     <select id="chatModeSelect" style="display:none">
       <option value="twitch">Twitch Chat</option>
       <option value="modsAndStreamer">1️⃣ 🔒 Mod-Chat (Mods + Streamer)</option>
@@ -1075,37 +1094,37 @@
     'schwarz-rot': {
       label:'Schwarz / Rot',
       ink:'#0a0a0c', panelSolid:'#1a0505', panel:'rgba(26,5,5,0.82)', border:'#3d0d0d',
-      gold:'#ff3b3b', goldRgb:'255,59,59', goldTier:'#ff6b6b', heraldryRed:'#ff1f1f',
+      gold:'#ff3b3b', goldRgb:'255,59,59', goldTier:'#ff6b6b', heraldryRed:'#ff1f1f', modBarBg:'#4a1015',
       parchment:'#f5eeee', parchmentDim:'#cc9999', inputBg:'#12100c'
     },
     'rot-schwarz': {
       label:'Rot / Schwarz',
       ink:'#33080a', panelSolid:'#4a0d10', panel:'rgba(74,13,16,0.85)', border:'#220606',
-      gold:'#ff7a3d', goldRgb:'255,122,61', goldTier:'#ffb14d', heraldryRed:'#1a0404',
+      gold:'#ff7a3d', goldRgb:'255,122,61', goldTier:'#ffb14d', heraldryRed:'#1a0404', modBarBg:'#2b0808',
       parchment:'#f7ece2', parchmentDim:'#e0ad93', inputBg:'#1c0505'
     },
     'schwarz-orange': {
       label:'Schwarz / Orange',
       ink:'#0a0a0c', panelSolid:'#1a0f05', panel:'rgba(26,15,5,0.82)', border:'#3d2409',
-      gold:'#ff9d1f', goldRgb:'255,157,31', goldTier:'#ffc247', heraldryRed:'#c2261a',
+      gold:'#ff9d1f', goldRgb:'255,157,31', goldTier:'#ffc247', heraldryRed:'#c2261a', modBarBg:'#4a2510',
       parchment:'#f5efe2', parchmentDim:'#d9b98a', inputBg:'#12100c'
     },
     'orange-schwarz': {
       label:'Orange / Schwarz',
       ink:'#4a1a04', panelSolid:'#5c2206', panel:'rgba(92,34,6,0.87)', border:'#2b1203',
-      gold:'#ffcf3d', goldRgb:'255,207,61', goldTier:'#ffe27a', heraldryRed:'#1f0a02',
+      gold:'#ffcf3d', goldRgb:'255,207,61', goldTier:'#ffe27a', heraldryRed:'#1f0a02', modBarBg:'#3a1508',
       parchment:'#fff1d6', parchmentDim:'#e8b978', inputBg:'#2a1503'
     },
     'clean-dark': {
       label:'Clean — Dark',
       ink:'#16181c', panelSolid:'#1e2126', panel:'rgba(30,33,38,0.88)', border:'#2a2d33',
-      gold:'#3b82f6', goldRgb:'59,130,246', goldTier:'#60a5fa', heraldryRed:'#dc2626',
+      gold:'#3b82f6', goldRgb:'59,130,246', goldTier:'#60a5fa', heraldryRed:'#dc2626', modBarBg:'#3a1015',
       parchment:'#e8e8ea', parchmentDim:'#9a9da3', inputBg:'#0f1115'
     },
     'clean-light': {
       label:'Clean — Hell',
       ink:'#f5f5f7', panelSolid:'#ffffff', panel:'rgba(255,255,255,0.92)', border:'#d8dadf',
-      gold:'#2563eb', goldRgb:'37,99,235', goldTier:'#1d4ed8', heraldryRed:'#dc2626',
+      gold:'#2563eb', goldRgb:'37,99,235', goldTier:'#1d4ed8', heraldryRed:'#dc2626', modBarBg:'#5c1e1e',
       parchment:'#1a1a1e', parchmentDim:'#6b6f76', inputBg:'#eef0f3'
     }
   };
@@ -1147,7 +1166,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.13.1 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.14.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1222,6 +1241,7 @@
     emotePickerBtn: document.getElementById('emotePickerBtn'),
     emotePickerPopup: document.getElementById('emotePickerPopup'),
     emotePreviewBar: document.getElementById('emotePreviewBar'),
+    mentionSuggestPopup: document.getElementById('mentionSuggestPopup'),
     replyIndicatorBar: document.getElementById('replyIndicatorBar'),
     replyIndicatorText: document.getElementById('replyIndicatorText'),
     cancelReplyBtn: document.getElementById('cancelReplyBtn'),
@@ -1313,6 +1333,7 @@
     root.setProperty('--gold-rgb', s.goldRgb);
     root.setProperty('--gold-tier', s.goldTier);
     root.setProperty('--heraldry-red', s.heraldryRed);
+    root.setProperty('--modbar-bg', s.modBarBg || s.heraldryRed);
     root.setProperty('--border', s.border);
     root.setProperty('--input-bg', s.inputBg);
   }
@@ -1695,6 +1716,7 @@
 
   // ---------- Personen-Infokarte ----------
   const userMessageLog = new Map(); // userId -> [{t, text}] — nur seit Tool-Start, kein voller Twitch-Verlauf
+  const recentChatters = new Map(); // userId -> { displayName, lastSeen } — für @Erwähnungs-Vorschläge
   function logUserMessage(userId, text){
     if(!userMessageLog.has(userId)) userMessageLog.set(userId, []);
     const arr = userMessageLog.get(userId);
@@ -2164,14 +2186,84 @@
   }
   els.sendChatBtn.onclick = sendChatMessage;
   els.chatMessageInput.addEventListener('keydown', (e)=>{
+    if(els.mentionSuggestPopup.classList.contains('open')){
+      const items = Array.from(els.mentionSuggestPopup.querySelectorAll('.ms-item'));
+      let idx = items.findIndex(it => it.classList.contains('active'));
+      if(e.key === 'ArrowDown'){
+        e.preventDefault();
+        idx = (idx + 1) % items.length;
+        items.forEach(it => it.classList.remove('active'));
+        items[idx].classList.add('active');
+        items[idx].scrollIntoView({ block:'nearest' });
+        return;
+      }
+      if(e.key === 'ArrowUp'){
+        e.preventDefault();
+        idx = (idx - 1 + items.length) % items.length;
+        items.forEach(it => it.classList.remove('active'));
+        items[idx].classList.add('active');
+        items[idx].scrollIntoView({ block:'nearest' });
+        return;
+      }
+      if(e.key === 'Enter' || e.key === 'Tab'){
+        if(idx >= 0){ e.preventDefault(); items[idx].click(); return; }
+      }
+      if(e.key === 'Escape'){ closeMentionSuggestions(); return; }
+    }
     if(e.key === 'Enter'){ e.preventDefault(); sendChatMessage(); }
   });
   els.chatMessageInput.addEventListener('input', ()=>{
     updateEmotePreviewBubble();
+    updateMentionSuggestions();
     localStorage.setItem('ligaChatOverlayDraft', els.chatMessageInput.value);
   });
   els.chatMessageInput.addEventListener('scroll', updateEmotePreviewBubble);
-  els.chatMessageInput.addEventListener('click', updateEmotePreviewBubble);
+  els.chatMessageInput.addEventListener('click', ()=>{ updateEmotePreviewBubble(); updateMentionSuggestions(); });
+
+  function closeMentionSuggestions(){
+    els.mentionSuggestPopup.classList.remove('open');
+    els.mentionSuggestPopup.innerHTML = '';
+  }
+  function updateMentionSuggestions(){
+    const value = els.chatMessageInput.value;
+    const cursor = els.chatMessageInput.selectionStart;
+    const uptoCursor = value.slice(0, cursor);
+    const match = uptoCursor.match(/(^|\s)@([a-z0-9_]{1,25})$/i);
+    if(!match){ closeMentionSuggestions(); return; }
+    const partial = match[2].toLowerCase();
+    const wordStart = cursor - partial.length - 1; // Position des "@"
+    const now = Date.now();
+    const matches = Array.from(recentChatters.entries())
+      .filter(([id, info]) => info.displayName.toLowerCase().startsWith(partial))
+      .sort((a, b) => b[1].lastSeen - a[1].lastSeen)
+      .slice(0, 6);
+    if(!matches.length){ closeMentionSuggestions(); return; }
+    els.mentionSuggestPopup.innerHTML = '';
+    matches.forEach(([id, info], i)=>{
+      const item = document.createElement('div');
+      item.className = 'ms-item' + (i === 0 ? ' active' : '');
+      item.textContent = info.displayName;
+      item.onclick = ()=>{
+        const before = value.slice(0, wordStart);
+        const after = value.slice(cursor);
+        const insertion = '@' + info.displayName + ' ';
+        els.chatMessageInput.value = before + insertion + after;
+        const newPos = (before + insertion).length;
+        els.chatMessageInput.focus();
+        els.chatMessageInput.setSelectionRange(newPos, newPos);
+        closeMentionSuggestions();
+        updateEmotePreviewBubble();
+        localStorage.setItem('ligaChatOverlayDraft', els.chatMessageInput.value);
+      };
+      els.mentionSuggestPopup.appendChild(item);
+    });
+    els.mentionSuggestPopup.classList.add('open');
+  }
+  document.addEventListener('click', (e)=>{
+    if(els.mentionSuggestPopup.classList.contains('open') && !els.mentionSuggestPopup.contains(e.target) && e.target !== els.chatMessageInput){
+      closeMentionSuggestions();
+    }
+  });
 
   const emoteMeasureSpan = document.createElement('span');
   emoteMeasureSpan.style.cssText = 'position:absolute; left:-9999px; top:-9999px; white-space:pre; font-size:13px; font-family:inherit;';
@@ -3239,6 +3331,7 @@
     mainLine.appendChild(nameSpan);
 
     logUserMessage(userId, message);
+    recentChatters.set(userId, { displayName, lastSeen: Date.now() });
     const msgSpan = document.createElement('span');
     msgSpan.className = 'message-text';
     msgSpan.innerHTML = ' ' + buildMessageHtml(message, emotes);
