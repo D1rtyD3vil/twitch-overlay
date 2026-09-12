@@ -1172,7 +1172,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.15.2 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.15.3 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -2984,6 +2984,7 @@
 
     const displayName = tags['display-name'] || 'unbekannt';
     const userId = tags['user-id'] || displayName;
+    if(ownUserId && userId === ownUserId) return; // eigene Nachricht kommt manchmal über Twitch zurück — haben wir schon per Echo direkt angezeigt
     const color = tags['color'] && tags['color'] !== '' ? tags['color'] : '#c9a227';
     const badges = {};
     (tags['badges'] || '').split(',').forEach(b=>{
