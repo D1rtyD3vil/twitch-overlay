@@ -900,6 +900,9 @@
       <input type="number" id="timeoutSeconds" min="1" step="1" value="600"> <span id="timeoutUnitLabel">Sek.</span>
       <button id="timeoutUnitBtn" title="Zwischen Sekunden und Minuten umschalten">⇄ Min.</button>
       <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
+      <label style="flex-direction:row; align-items:center; gap:4px; font-size:11px;" title="Bei aus: Zeile bleibt sofort stehen (nur ausgegraut), verschwindet nicht — praktisch beim schnellen Hintereinander-Timeouten mehrerer Leute">
+        <input type="checkbox" id="timeoutAnimationToggle" style="width:auto;" checked> mit Animation
+      </label>
       <span style="opacity:0.4">|</span>
       <div id="streamToolsWrap" style="position:relative;">
         <button id="streamToolsBtn">🛠 Stream-Tools</button>
@@ -1186,7 +1189,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.16.1 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.18.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1232,6 +1235,7 @@
     timeoutUnitLabel: document.getElementById('timeoutUnitLabel'),
     timeoutUnitBtn: document.getElementById('timeoutUnitBtn'),
     timeoutModeBtn: document.getElementById('timeoutModeBtn'),
+    timeoutAnimationToggle: document.getElementById('timeoutAnimationToggle'),
     timeoutStatus: document.getElementById('timeoutStatus'),
     modRosterDisplay: document.getElementById('modRosterDisplay'),
     modsOnlineTopbarCount: document.getElementById('modsOnlineTopbarCount'),
@@ -1529,8 +1533,17 @@
       } else if(msg.type === 'suspiciousFlag'){
         if(!isMod) return;
         const row = document.querySelector('.chat-row[data-message-id="' + CSS.escape(msg.messageId) + '"]');
-        if(row) applySuspiciousFlag(row);
-        else pendingSuspiciousIds.add(msg.messageId);
+        if(row){
+          applySuspiciousFlag(row, msg);
+        } else if(msg.text){
+          // "Eingeschränkt": Twitch hält diese Nachricht komplett vom normalen Chat zurück — kommt NUR
+          // über diesen Weg an, also hier direkt mit anzeigen, statt nur auf eine (nie kommende) Chat-Zeile zu warten.
+          renderMessage({ displayName: msg.userName || 'Jemand', userId: msg.userId, color: '', badges: {}, message: msg.text, messageId: msg.messageId });
+          const newRow = document.querySelector('.chat-row[data-message-id="' + CSS.escape(msg.messageId) + '"]');
+          if(newRow) applySuspiciousFlag(newRow, msg);
+        } else {
+          pendingSuspiciousIds.add(msg.messageId);
+        }
       }
     };
     syncWs.onclose = ()=>{ setSyncConnStatus(false); setTimeout(connectSyncServer, 4000); };
@@ -1710,7 +1723,7 @@
     }, 1000);
     streamStartTimeoutHandle = setTimeout(()=>{
       closeStreamStartPopup();
-      pruneGreetingsOlderThan(60000);
+      pruneGreetingsOlderThan(5 * 60 * 1000);
     }, 60000);
   }
   function closeStreamStartPopup(){
@@ -1718,7 +1731,7 @@
     if(streamStartCountdownTimer){ clearInterval(streamStartCountdownTimer); streamStartCountdownTimer = null; }
     if(streamStartTimeoutHandle){ clearTimeout(streamStartTimeoutHandle); streamStartTimeoutHandle = null; }
   }
-  els.streamStartResetBtn.onclick = ()=>{ closeStreamStartPopup(); pruneGreetingsOlderThan(60000); };
+  els.streamStartResetBtn.onclick = ()=>{ closeStreamStartPopup(); pruneGreetingsOlderThan(5 * 60 * 1000); };
   els.streamStartCancelBtn.onclick = ()=>{ closeStreamStartPopup(); };
 
   let wasStreamLive = null; // null = noch unbekannt (erste Abfrage zählt nicht als "gerade gestartet")
@@ -1820,6 +1833,10 @@
     els.timeoutModeBtn.classList.toggle('active', timeoutModeActive);
     document.querySelectorAll('.chat-row').forEach(r => r.classList.toggle('timeout-armed', timeoutModeActive));
     els.timeoutStatus.textContent = timeoutModeActive ? 'Klick auf eine Chat-Zeile zum Timeouten.' : '';
+  };
+  els.timeoutAnimationToggle.checked = localStorage.getItem('ligaChatOverlayTimeoutAnim') !== '0';
+  els.timeoutAnimationToggle.onchange = ()=>{
+    localStorage.setItem('ligaChatOverlayTimeoutAnim', els.timeoutAnimationToggle.checked ? '1' : '0');
   };
 
   let timeoutUnit = 'sec'; // 'sec' | 'min' — nur Anzeige, gespeichert/gesendet wird immer in Sekunden
@@ -2708,6 +2725,10 @@
     const targetUserId = tags['target-user-id'];
     if(!targetUserId) return; // z.B. "Chat komplett geleert" ohne bestimmte Zielperson
     const rows = Array.from(document.querySelectorAll('.chat-row[data-user-id="' + CSS.escape(targetUserId) + '"]:not(.timeout-whoosh)'));
+    if(!els.timeoutAnimationToggle.checked){
+      rows.forEach(row => row.classList.add('timed-out'));
+      return;
+    }
     rows.forEach((row, i)=>{
       setTimeout(()=>{
         row.classList.add('timeout-whoosh');
@@ -3065,12 +3086,19 @@
 
   // ---------- "Unter Beobachtung" (Suspicious User) — nur für Mods sichtbar, kommt vom Server ----------
   const pendingSuspiciousIds = new Set(); // Nachrichten-IDs, deren Zeile noch nicht existiert, wenn das Flag ankommt
-  function applySuspiciousFlag(row){
+  function applySuspiciousFlag(row, meta){
     if(row.classList.contains('suspicious-row')) return;
     row.classList.add('suspicious-row');
     const badge = document.createElement('span');
     badge.className = 'suspicious-badge';
-    badge.textContent = '🛡 Unter Beobachtung';
+    let label = '🛡 Unter Beobachtung';
+    if(meta){
+      if(meta.status === 'restricted') label = '🚫 Eingeschränkt';
+      const types = meta.types || [];
+      if(types.includes('banned_in_shared_channel')) label += ' (in anderem Kanal gebannt)';
+      else if(types.includes('ban_evader')) label += ' (möglicher Ban-Umgeher)';
+    }
+    badge.textContent = label;
     const mainLine = row.querySelector('.chat-row-main') || row;
     mainLine.insertBefore(badge, mainLine.firstChild);
   }
