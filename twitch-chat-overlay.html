@@ -412,7 +412,7 @@
     font-style:italic;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  .modchat-row .reply-preview{ flex-basis:100%; order:-1; }
+  .modchat-row .reply-preview{ order:-1; }
   .reply-preview-clickable{ cursor:pointer; text-decoration:underline dotted; }
   .reply-preview-clickable:hover{ color:var(--gold); opacity:1; }
   .chat-row{ cursor:pointer; transition: background-color 0.1s; }
@@ -790,7 +790,7 @@
   #emotePickerPopup img:hover{ background: rgba(var(--gold-rgb),0.25); }
   #emotePickerPopup .ep-empty{ font-size:11px; color:var(--parchment-dim); }
   .modchat-row{
-    display:flex; align-items:baseline; flex-wrap:wrap;
+    display:flex; flex-direction:column;
     background: rgba(120,60,220,0.22);
     border-left:3px solid #8a4dff;
     border-radius:5px;
@@ -800,6 +800,12 @@
     animation: modchat-pulse 3.2s linear infinite;
     transition: background-color 0.1s;
   }
+  .modchat-row-main{
+    display:flex; align-items:baseline; gap:4px; flex-wrap:nowrap;
+    width:100%; min-width:0; box-sizing:border-box;
+  }
+  .modchat-row-main .mc-text{ flex:1 1 auto; min-width:0; overflow-wrap:anywhere; }
+  .modchat-row-main .msg-time{ flex:0 0 auto; }
   .modchat-clickable{ cursor:pointer; }
   .modchat-clickable:hover{ filter:brightness(1.15); }
   @keyframes modchat-pulse{
@@ -1172,7 +1178,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.14.2 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.14.4 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1888,16 +1894,28 @@
     if(savedPos){
       try{ const p = JSON.parse(savedPos); widget.style.left = p.left; widget.style.top = p.top; }catch(e){}
     }
+    function clampToViewport(){
+      if(!widget.classList.contains('open')) return; // bei geschlossenem (display:none) Fenster liefert getBoundingClientRect nur Nullen
+      const rect = widget.getBoundingClientRect();
+      const maxLeft = Math.max(0, window.innerWidth - rect.width);
+      const maxTop = Math.max(0, window.innerHeight - rect.height);
+      const newLeft = Math.min(Math.max(0, rect.left), maxLeft);
+      const newTop = Math.min(Math.max(0, rect.top), maxTop);
+      if(newLeft !== rect.left) widget.style.left = newLeft + 'px';
+      if(newTop !== rect.top) widget.style.top = newTop + 'px';
+    }
+    window.addEventListener('resize', clampToViewport);
+    return clampToViewport;
   }
-  makeDraggable(els.timerWidget, els.timerWidget.querySelector('.fw-header'));
-  makeDraggable(els.notepadWidget, els.notepadWidget.querySelector('.fw-header'));
+  const clampTimerWidget = makeDraggable(els.timerWidget, els.timerWidget.querySelector('.fw-header'));
+  const clampNotepadWidget = makeDraggable(els.notepadWidget, els.notepadWidget.querySelector('.fw-header'));
 
   document.querySelectorAll('.fw-close').forEach(btn=>{
     btn.onclick = ()=>{ document.getElementById(btn.dataset.target).classList.remove('open'); };
   });
 
-  els.openTimerBtn.onclick = ()=>{ els.timerWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); };
-  els.openNotepadBtn.onclick = ()=>{ els.notepadWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); };
+  els.openTimerBtn.onclick = ()=>{ els.timerWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); clampTimerWidget(); };
+  els.openNotepadBtn.onclick = ()=>{ els.notepadWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); clampNotepadWidget(); };
 
   // ---------- Notfall-Nachricht ----------
   els.openEmergencyBtn.onclick = ()=>{
@@ -2374,20 +2392,24 @@
       replyLine.innerHTML = buildReplyPreviewHtml(opts.replyTo.displayName, opts.replyTo.body);
       row.appendChild(replyLine);
     }
+    const mainLine = document.createElement('div');
+    mainLine.className = 'modchat-row-main';
+    row.appendChild(mainLine);
+
     const tag = document.createElement('span');
     tag.className = 'mc-tag';
     tag.textContent = (opts.scope === 'mods' ? '2️⃣🤫 ' : '1️⃣🔒 ') + from + ':';
     if(opts.color) tag.style.color = ensureReadableColor(opts.color);
-    row.appendChild(tag);
+    mainLine.appendChild(tag);
     const textEl = document.createElement('span');
     textEl.className = 'mc-text';
     textEl.innerHTML = buildModChatMessageHtml(text);
-    row.appendChild(textEl);
+    mainLine.appendChild(textEl);
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'msg-time';
     timeSpan.textContent = formatShortTime(opts.ts || Date.now());
-    row.appendChild(timeSpan);
+    mainLine.appendChild(timeSpan);
 
     const wasNearBottom = isNearBottom();
     els.chat.appendChild(row);
@@ -3392,6 +3414,11 @@
       wrapper.innerHTML = html;
       const el = wrapper.firstElementChild;
       if(!el) return;
+      // Uralte, noch im Browser gespeicherte Zeilen im alten Format (vor der Struktur-Überarbeitung)
+      // aussortieren statt fehlerhaft anzuzeigen — die haben noch keine "chat-row-main"-Unterzeile.
+      if(el.classList.contains('chat-row') && !el.classList.contains('day-divider') && !el.querySelector('.chat-row-main')){
+        return;
+      }
       el.classList.toggle('timeout-armed', timeoutModeActive);
       if(el.dataset.userId){
         el.onclick = ()=>{ if(timeoutModeActive) executeTimeout(el.dataset.userId, el.dataset.displayName || '', el); };
