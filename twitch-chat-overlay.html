@@ -274,7 +274,7 @@
        trotz mehr Inhalt). Normaler Block-Fluss + gezieltes scrollTop ist zuverlässiger. */
   }
   .chat-row{
-    display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;
+    display:flex; flex-direction:column;
     padding:4px 8px;
     margin-bottom:4px;
     border-radius:5px;
@@ -285,13 +285,18 @@
     word-break: break-word;
     position:relative;
   }
+  .chat-row-main{
+    display:flex; align-items:baseline; gap:6px; flex-wrap:nowrap;
+    min-width:0;
+  }
+  .chat-row-main .message-text{ flex:1 1 auto; min-width:0; }
+  .chat-row-main .msg-time{ flex:0 0 auto; }
   .chat-row.first-greeting{
     border-left-color: var(--gold);
     background-color: rgba(var(--gold-rgb), 0.22);
   }
 
   .reply-preview{
-    flex-basis:100%; order:-1;
     font-size:11px; color:var(--parchment-dim);
     opacity:0.85;
     padding-left:2px;
@@ -299,6 +304,7 @@
     font-style:italic;
     white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
+  .modchat-row .reply-preview{ flex-basis:100%; order:-1; }
   .reply-preview-clickable{ cursor:pointer; text-decoration:underline dotted; }
   .reply-preview-clickable:hover{ color:var(--gold); opacity:1; }
   .chat-row{ cursor:pointer; transition: background-color 0.1s; }
@@ -359,7 +365,7 @@
   }
   .chat-row.first-chatter-row::before{
     content: '🌱 Zum ersten Mal hier!';
-    flex-basis:100%; order:-2;
+    display:block;
     font-size:10px; font-weight:700;
     color:#4ade80;
     text-transform:uppercase; letter-spacing:0.02em;
@@ -955,7 +961,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.10.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.10.2 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1034,6 +1040,7 @@
   let accessToken = null;
   let broadcasterId = null;   // ID des Twitch-Kanals (nicht zwingend der eingeloggte Nutzer)
   let ownUserId = null;       // ID des eingeloggten Nutzers (Streamer oder Mod)
+  const PAGE_LOAD_TS = Date.now(); // gemeinsamer Bezugspunkt, damit alle Mod-Chat-Zeilen synchron pulsieren
   let ownLogin = null;
   let ownDisplayName = null;
   let ownColor = '#c9a227'; // Twitch-Namensfarbe, sobald über USERSTATE bekannt
@@ -1896,6 +1903,9 @@
     opts = opts || {};
     const row = document.createElement('div');
     row.className = 'modchat-row' + (opts.scope === 'mods' ? ' modchat-only' : '') + ' modchat-clickable';
+    // Alle Zeilen auf dieselbe gemeinsame "Puls-Uhr" synchronisieren, statt dass jede Zeile ihre eigene
+    // Animation ab dem Einfügen neu startet (sonst pulsieren mehrere Nachrichten hintereinander wild versetzt).
+    row.style.animationDelay = (-((Date.now() - PAGE_LOAD_TS) % 3200) / 1000) + 's';
     row.onclick = ()=>{ setModChatReplyTarget(from, text, opts.scope === 'mods' ? 'mods' : 'modsAndStreamer'); };
     if(opts.replyTo){
       const replyLine = document.createElement('div');
@@ -2313,16 +2323,20 @@
   function insertAlertChatRow(text, extraMsg, extraEmotes, category, weight){
     const row = document.createElement('div');
     row.className = 'chat-row alert-row' + (category ? ' cat-' + category : '') + (weight ? ' weight-' + weight : '');
+    const mainLine = document.createElement('div');
+    mainLine.className = 'chat-row-main';
+    mainLine.style.alignItems = 'center';
+    row.appendChild(mainLine);
     const icon = document.createElement('span');
     icon.className = 'alert-icon';
     icon.textContent = '★';
-    row.appendChild(icon);
+    mainLine.appendChild(icon);
     const textSpan = document.createElement('span');
     textSpan.className = 'alert-text';
     let html = text; // bereits sicher aufgebautes HTML (mit Fett-Markierung) aus buildGermanAlertText o.ä. — nicht nochmal escapen
     if(extraMsg) html += '  „' + buildMessageHtml(extraMsg, extraEmotes) + '"';
     textSpan.innerHTML = html;
-    row.appendChild(textSpan);
+    mainLine.appendChild(textSpan);
 
     const wasNearBottom = isNearBottom();
     els.chat.appendChild(row);
@@ -2512,7 +2526,8 @@
     const badge = document.createElement('span');
     badge.className = 'suspicious-badge';
     badge.textContent = '🛡 Unter Beobachtung';
-    row.insertBefore(badge, row.firstChild);
+    const mainLine = row.querySelector('.chat-row-main') || row;
+    mainLine.insertBefore(badge, mainLine.firstChild);
   }
 
   const subscriberBadgeTierMap = new Map(); // Badge-Versions-ID (aus dem "badges"-Tag) -> '1000'|'2000'|'3000'
@@ -2815,30 +2830,34 @@
       row.appendChild(replyLine);
     }
 
+    const mainLine = document.createElement('div');
+    mainLine.className = 'chat-row-main';
+    row.appendChild(mainLine);
+
     const statusIcon = document.createElement('span');
     statusIcon.className = 'status-icon ' + (greetedNow ? 'ok' : 'no');
     statusIcon.innerHTML = greetedNow ? CHECK_SVG : CROSS_SVG;
     statusIcon.title = 'Klicken zum manuellen Umschalten, falls die automatische Erkennung danebenlag';
     statusIcon.onclick = (e)=>{ e.stopPropagation(); toggleGreetedManually(userId); };
-    row.appendChild(statusIcon);
+    mainLine.appendChild(statusIcon);
 
     if(badges.broadcaster){
       const b = document.createElement('span');
       b.className = 'role-badge role-broadcaster'; b.textContent = 'Streamer';
-      row.appendChild(b);
+      mainLine.appendChild(b);
     } else if(badges.moderator){
       const b = document.createElement('span');
       b.className = 'role-badge role-mod'; b.textContent = 'Mod';
-      row.appendChild(b);
+      mainLine.appendChild(b);
     } else if(badges.vip){
       const b = document.createElement('span');
       b.className = 'role-badge role-vip'; b.textContent = 'VIP';
-      row.appendChild(b);
+      mainLine.appendChild(b);
     }
     if(badges.founder){
       const fb = document.createElement('span');
       fb.className = 'role-badge role-founder'; fb.textContent = 'GR';
-      row.appendChild(fb);
+      mainLine.appendChild(fb);
     }
 
     if(isSub){
@@ -2853,25 +2872,25 @@
       } else {
         applyTierBadge(tierBadge, null);
       }
-      row.appendChild(tierBadge);
+      mainLine.appendChild(tierBadge);
     }
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'display-name';
     nameSpan.style.color = ensureReadableColor(color);
     nameSpan.textContent = displayName + ':';
-    row.appendChild(nameSpan);
+    mainLine.appendChild(nameSpan);
 
     logUserMessage(userId, message);
     const msgSpan = document.createElement('span');
     msgSpan.className = 'message-text';
     msgSpan.innerHTML = ' ' + buildMessageHtml(message, emotes);
-    row.appendChild(msgSpan);
+    mainLine.appendChild(msgSpan);
 
     const timeSpan = document.createElement('span');
     timeSpan.className = 'msg-time';
     timeSpan.textContent = formatShortTime(ts);
-    row.appendChild(timeSpan);
+    mainLine.appendChild(timeSpan);
 
     const wasNearBottom = isNearBottom();
     els.chat.appendChild(row);
