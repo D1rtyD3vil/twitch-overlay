@@ -190,6 +190,65 @@
   }
   #modToolbar button.active{ background: var(--gold); color:#1a0f00; font-weight:700; }
   #timeoutStatus{ opacity:0.9; font-style:italic; }
+  #streamToolsMenu{
+    display:none;
+    position:absolute; top:calc(100% + 4px); left:0;
+    background:var(--panel-solid); border:1px solid var(--border); border-radius:6px;
+    padding:4px; z-index:30;
+    flex-direction:column; gap:2px;
+    min-width:170px;
+  }
+  #streamToolsMenu.open{ display:flex; }
+  #streamToolsMenu button{
+    background:var(--ink); color:var(--parchment); border:1px solid var(--border);
+    border-radius:4px; padding:6px 8px; text-align:left; cursor:pointer; font-size:12px;
+  }
+  #streamToolsMenu button:hover{ border-color:var(--gold); }
+
+  .floating-widget{
+    display:none;
+    position:fixed; top:80px; left:80px;
+    width:220px;
+    background:var(--panel-solid); border:1px solid var(--gold); border-radius:8px;
+    box-shadow:0 6px 20px rgba(0,0,0,0.5);
+    z-index:70;
+    font-size:12px;
+    overflow:hidden;
+  }
+  .floating-widget.open{ display:block; }
+  .fw-header{
+    display:flex; align-items:center; justify-content:space-between;
+    background: rgba(var(--gold-rgb),0.25);
+    padding:6px 8px;
+    cursor:move;
+    user-select:none;
+  }
+  .fw-drag-handle{ font-weight:700; font-size:11px; }
+  .fw-close{
+    background:none; border:none; color:var(--parchment); cursor:pointer; font-size:13px; padding:0 2px;
+  }
+  .fw-body{ padding:10px; display:flex; flex-direction:column; gap:8px; }
+  .fw-row{ display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .fw-row button{
+    background:var(--ink); color:var(--parchment); border:1px solid var(--border);
+    border-radius:4px; padding:4px 8px; cursor:pointer; font-size:11px;
+  }
+  .fw-row button:hover{ border-color:var(--gold); }
+  #timerDisplay{
+    font-size:28px; font-weight:700; text-align:center; color:var(--gold);
+    font-variant-numeric: tabular-nums;
+  }
+  #timerDurationInput{
+    background:var(--ink); color:var(--parchment); border:1px solid var(--border);
+    border-radius:4px; padding:3px 6px; font-size:11px;
+  }
+  #notepadTextarea{
+    width:100%; height:140px; resize:vertical;
+    background:var(--ink); color:var(--parchment); border:1px solid var(--border);
+    border-radius:4px; padding:6px; font-family:inherit; font-size:12px; box-sizing:border-box;
+  }
+
+
   #modRosterDisplay{
     margin-left:auto; font-size:12px;
     color:#ffffff;
@@ -358,6 +417,21 @@
     background-color: rgba(56, 189, 248, 0.22);
     box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.35);
   }
+  .chat-row.reply-to-me-row{
+    border-left-color: #fb923c;
+    background-color: rgba(251, 146, 60, 0.18);
+    box-shadow: inset 0 0 0 1px rgba(251, 146, 60, 0.4);
+  }
+  .chat-row.reply-to-me-row .display-name{ font-weight:700; }
+
+  .modchat-row.modchat-mentioned{
+    box-shadow: inset 0 0 0 2px #38bdf8;
+  }
+  .modchat-row.modchat-mentioned .mc-tag{ font-weight:700; }
+  .modchat-row.modchat-reply-to-me{
+    box-shadow: inset 0 0 0 2px #fb923c;
+  }
+  .modchat-row.modchat-reply-to-me .mc-tag{ font-weight:700; }
 
   .chat-row.first-chatter-row{
     border-left-color: #22c55e;
@@ -742,6 +816,14 @@
     <input type="number" id="timeoutSeconds" min="1" step="1" value="600"> <span id="timeoutUnitLabel">Sek.</span>
     <button id="timeoutUnitBtn" title="Zwischen Sekunden und Minuten umschalten">⇄ Min.</button>
     <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
+    <span style="opacity:0.4">|</span>
+    <div id="streamToolsWrap" style="position:relative;">
+      <button id="streamToolsBtn">🛠 Stream-Tools</button>
+      <div id="streamToolsMenu">
+        <button id="openTimerBtn" type="button">⏱ Stoppuhr / Timer</button>
+        <button id="openNotepadBtn" type="button">📝 Notizblock</button>
+      </div>
+    </div>
     <span id="timeoutStatus"></span>
     <span id="modRosterDisplay"></span>
   </div>
@@ -835,6 +917,40 @@
   <div id="replyIndicatorBar">
     <span id="replyIndicatorText"></span>
     <button id="cancelReplyBtn" type="button">✕</button>
+  </div>
+
+  <div id="timerWidget" class="floating-widget">
+    <div class="fw-header">
+      <span class="fw-drag-handle">⏱ Timer/Stoppuhr</span>
+      <button class="fw-close" data-target="timerWidget" type="button">✕</button>
+    </div>
+    <div class="fw-body">
+      <div id="timerDisplay">00:00:00</div>
+      <div class="fw-row">
+        <label style="flex-direction:row; align-items:center; gap:4px; font-size:11px;">
+          <input type="radio" name="timerMode" value="up" checked style="width:auto;"> Hochzählen
+        </label>
+        <label style="flex-direction:row; align-items:center; gap:4px; font-size:11px;">
+          <input type="radio" name="timerMode" value="down" style="width:auto;"> Runterzählen von
+        </label>
+        <input type="text" id="timerDurationInput" placeholder="02:00:00" style="width:70px;">
+      </div>
+      <div class="fw-row">
+        <button id="timerStartBtn" type="button">▶ Start</button>
+        <button id="timerPauseBtn" type="button">⏸ Pause</button>
+        <button id="timerResetBtn" type="button">↺ Reset</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="notepadWidget" class="floating-widget">
+    <div class="fw-header">
+      <span class="fw-drag-handle">📝 Notizblock (nur bei dir sichtbar)</span>
+      <button class="fw-close" data-target="notepadWidget" type="button">✕</button>
+    </div>
+    <div class="fw-body">
+      <textarea id="notepadTextarea" placeholder="Nur für dich, bleibt lokal gespeichert..."></textarea>
+    </div>
   </div>
 
   <div id="chatInputBar">
@@ -961,7 +1077,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.10.2 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.11.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1009,6 +1125,18 @@
     timeoutModeBtn: document.getElementById('timeoutModeBtn'),
     timeoutStatus: document.getElementById('timeoutStatus'),
     modRosterDisplay: document.getElementById('modRosterDisplay'),
+    streamToolsBtn: document.getElementById('streamToolsBtn'),
+    streamToolsMenu: document.getElementById('streamToolsMenu'),
+    openTimerBtn: document.getElementById('openTimerBtn'),
+    openNotepadBtn: document.getElementById('openNotepadBtn'),
+    timerWidget: document.getElementById('timerWidget'),
+    timerDisplay: document.getElementById('timerDisplay'),
+    timerDurationInput: document.getElementById('timerDurationInput'),
+    timerStartBtn: document.getElementById('timerStartBtn'),
+    timerPauseBtn: document.getElementById('timerPauseBtn'),
+    timerResetBtn: document.getElementById('timerResetBtn'),
+    notepadWidget: document.getElementById('notepadWidget'),
+    notepadTextarea: document.getElementById('notepadTextarea'),
     chatInputBar: document.getElementById('chatInputBar'),
     chatMessageInput: document.getElementById('chatMessageInput'),
     chatModeSelect: document.getElementById('chatModeSelect'),
@@ -1221,6 +1349,9 @@
         if(msg.modRoster){
           renderModRoster(msg.modRoster);
         }
+        if(msg.timerState){
+          applyTimerState(msg.timerState);
+        }
       } else if(msg.type === 'greetingListUpdate'){
         applyGreetingListUpdate(msg.words);
       } else if(msg.type === 'greetUpdate'){
@@ -1239,6 +1370,8 @@
         insertSessionDivider('Neue Session gestartet — Begrüßungen zurückgesetzt');
       } else if(msg.type === 'sessionPruneEvent'){
         insertSessionDivider('Streamstart — alte Begrüßungen zurückgesetzt');
+      } else if(msg.type === 'timerUpdate'){
+        applyTimerState(msg.state);
       } else if(msg.type === 'loginNotice'){
         els.loginNoticeBubble.textContent = '🟢 ' + msg.name + ' eingeloggt';
         els.loginNoticeBubble.classList.add('open');
@@ -1608,6 +1741,120 @@
 
   // ---------- Twitch OAuth (Implicit Grant, nur für Sub-Tier-Abfrage) ----------
   els.gateLoginBtn.onclick = ()=>{ els.loginBtn.click(); };
+  // ---------- Stream-Tools: Menü, verschiebbare Fenster, Timer (synchron), Notizblock (nur lokal) ----------
+  els.streamToolsBtn.onclick = (e)=>{ e.stopPropagation(); els.streamToolsMenu.classList.toggle('open'); };
+  document.addEventListener('click', (e)=>{
+    if(els.streamToolsMenu.classList.contains('open') && !els.streamToolsMenu.contains(e.target) && e.target !== els.streamToolsBtn){
+      els.streamToolsMenu.classList.remove('open');
+    }
+  });
+
+  function makeDraggable(widget, handle){
+    let dragging = false, offX = 0, offY = 0;
+    handle.addEventListener('mousedown', (e)=>{
+      dragging = true;
+      const rect = widget.getBoundingClientRect();
+      offX = e.clientX - rect.left;
+      offY = e.clientY - rect.top;
+      e.preventDefault();
+    });
+    document.addEventListener('mousemove', (e)=>{
+      if(!dragging) return;
+      let x = e.clientX - offX;
+      let y = e.clientY - offY;
+      x = Math.max(0, Math.min(window.innerWidth - widget.offsetWidth, x));
+      y = Math.max(0, Math.min(window.innerHeight - widget.offsetHeight, y));
+      widget.style.left = x + 'px';
+      widget.style.top = y + 'px';
+    });
+    document.addEventListener('mouseup', ()=>{
+      if(!dragging) return;
+      dragging = false;
+      localStorage.setItem(widget.id + 'Pos', JSON.stringify({ left: widget.style.left, top: widget.style.top }));
+    });
+    const savedPos = localStorage.getItem(widget.id + 'Pos');
+    if(savedPos){
+      try{ const p = JSON.parse(savedPos); widget.style.left = p.left; widget.style.top = p.top; }catch(e){}
+    }
+  }
+  makeDraggable(els.timerWidget, els.timerWidget.querySelector('.fw-drag-handle'));
+  makeDraggable(els.notepadWidget, els.notepadWidget.querySelector('.fw-drag-handle'));
+
+  document.querySelectorAll('.fw-close').forEach(btn=>{
+    btn.onclick = ()=>{ document.getElementById(btn.dataset.target).classList.remove('open'); };
+  });
+
+  els.openTimerBtn.onclick = ()=>{ els.timerWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); };
+  els.openNotepadBtn.onclick = ()=>{ els.notepadWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); };
+
+  // Notizblock: rein lokal, nicht synchronisiert
+  els.notepadTextarea.value = localStorage.getItem('ligaChatOverlayNotepad') || '';
+  els.notepadTextarea.addEventListener('input', ()=>{
+    localStorage.setItem('ligaChatOverlayNotepad', els.notepadTextarea.value);
+  });
+
+  // Timer: Start/Pause/Reset werden an alle synchronisiert, jede Person berechnet die Anzeige lokal anhand
+  // des gemeinsamen Zeitpunkts/Zustands weiter — läuft dadurch für alle exakt gleich, ohne ständigen Datenverkehr.
+  let timerState = { mode: 'up', durationMs: 0, baseElapsedMs: 0, startTs: null, running: false };
+  let timerTickHandle = null;
+
+  function parseDurationToMs(str){
+    const parts = str.split(':').map(p => parseInt(p, 10) || 0);
+    let h = 0, m = 0, s = 0;
+    if(parts.length === 3){ [h, m, s] = parts; }
+    else if(parts.length === 2){ [m, s] = parts; }
+    else if(parts.length === 1){ [s] = parts; }
+    return ((h * 3600) + (m * 60) + s) * 1000;
+  }
+  function formatDuration(ms){
+    if(ms < 0) ms = 0;
+    const totalSec = Math.floor(ms / 1000);
+    const h = Math.floor(totalSec / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+  function currentTimerElapsedMs(){
+    if(timerState.running && timerState.startTs){
+      return timerState.baseElapsedMs + (Date.now() - timerState.startTs);
+    }
+    return timerState.baseElapsedMs;
+  }
+  function renderTimerDisplay(){
+    const elapsed = currentTimerElapsedMs();
+    if(timerState.mode === 'down'){
+      els.timerDisplay.textContent = formatDuration(timerState.durationMs - elapsed);
+    } else {
+      els.timerDisplay.textContent = formatDuration(elapsed);
+    }
+  }
+  function ensureTimerTick(){
+    if(timerTickHandle) return;
+    timerTickHandle = setInterval(renderTimerDisplay, 500);
+  }
+  function applyTimerState(newState){
+    timerState = newState;
+    renderTimerDisplay();
+    ensureTimerTick();
+  }
+  els.timerStartBtn.onclick = ()=>{
+    const mode = document.querySelector('input[name="timerMode"]:checked').value;
+    const durationMs = mode === 'down' ? parseDurationToMs(els.timerDurationInput.value || '00:00:00') : 0;
+    const newState = { mode, durationMs, baseElapsedMs: timerState.mode === mode ? timerState.baseElapsedMs : 0, startTs: Date.now(), running: true };
+    syncSend({ type: 'timerUpdate', state: newState });
+    applyTimerState(newState);
+  };
+  els.timerPauseBtn.onclick = ()=>{
+    const newState = Object.assign({}, timerState, { baseElapsedMs: currentTimerElapsedMs(), startTs: null, running: false });
+    syncSend({ type: 'timerUpdate', state: newState });
+    applyTimerState(newState);
+  };
+  els.timerResetBtn.onclick = ()=>{
+    const newState = { mode: timerState.mode, durationMs: timerState.durationMs, baseElapsedMs: 0, startTs: null, running: false };
+    syncSend({ type: 'timerUpdate', state: newState });
+    applyTimerState(newState);
+  };
+
   function checkAccessAndReveal(){
     if(isMod){
       els.accessGate.classList.add('hidden');
@@ -1901,8 +2148,11 @@
 
   function renderModChatMessage(from, text, opts){
     opts = opts || {};
+    const mentioned = isMentioningMe(text);
+    const myName = (ownDisplayName || ownLogin || '').toLowerCase();
+    const repliedToMe = !!(opts.replyTo && opts.replyTo.displayName && opts.replyTo.displayName.toLowerCase() === myName);
     const row = document.createElement('div');
-    row.className = 'modchat-row' + (opts.scope === 'mods' ? ' modchat-only' : '') + ' modchat-clickable';
+    row.className = 'modchat-row' + (opts.scope === 'mods' ? ' modchat-only' : '') + ' modchat-clickable' + (mentioned ? ' modchat-mentioned' : '') + (repliedToMe ? ' modchat-reply-to-me' : '');
     // Alle Zeilen auf dieselbe gemeinsame "Puls-Uhr" synchronisieren, statt dass jede Zeile ihre eigene
     // Animation ab dem Einfügen neu startet (sonst pulsieren mehrere Nachrichten hintereinander wild versetzt).
     row.style.animationDelay = (-((Date.now() - PAGE_LOAD_TS) % 3200) / 1000) + 's';
@@ -2510,6 +2760,7 @@
     if(tags['reply-parent-msg-id']){
       replyTo = {
         parentMsgId: tags['reply-parent-msg-id'],
+        parentUserLogin: tags['reply-parent-user-login'] || '',
         displayName: tags['reply-parent-display-name'] || tags['reply-parent-user-login'] || 'jemandem',
         body: tags['reply-parent-msg-body'] || ''
       };
@@ -2799,9 +3050,10 @@
     }
     const greetedNow = greetedUsers.has(userId);
     const mentioned = isMentioningMe(message);
+    const repliedToMe = !!(replyTo && ownLogin && replyTo.parentUserLogin && replyTo.parentUserLogin.toLowerCase() === ownLogin.toLowerCase());
 
     const row = document.createElement('div');
-    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '') + (mentioned ? ' mentioned-row' : '') + (isFirstMsg ? ' first-chatter-row' : '');
+    row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '') + (mentioned ? ' mentioned-row' : '') + (isFirstMsg ? ' first-chatter-row' : '') + (repliedToMe ? ' reply-to-me-row' : '');
     row.dataset.userId = userId;
     row.dataset.displayName = displayName;
     row.dataset.messageText = message;
