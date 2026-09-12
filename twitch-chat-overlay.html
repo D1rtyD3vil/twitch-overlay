@@ -425,11 +425,13 @@
   .chat-row.reply-to-me-row .display-name{ font-weight:700; }
 
   .modchat-row.modchat-mentioned{
-    box-shadow: inset 0 0 0 2px #38bdf8;
+    border-left-color: #38bdf8;
+    background: rgba(56,189,248,0.22);
   }
   .modchat-row.modchat-mentioned .mc-tag{ font-weight:700; }
   .modchat-row.modchat-reply-to-me{
-    box-shadow: inset 0 0 0 2px #fb923c;
+    border-left-color: #fb923c;
+    background: rgba(251,146,60,0.18);
   }
   .modchat-row.modchat-reply-to-me .mc-tag{ font-weight:700; }
 
@@ -1077,7 +1079,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.11.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.12.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
