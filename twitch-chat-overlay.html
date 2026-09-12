@@ -95,6 +95,7 @@
   #topbar select#colorSchemeInput:hover{ border-color:var(--gold); }
   #statusDot{ width:8px; height:8px; border-radius:50%; background:var(--red); display:inline-block; }
   #statusDot.on{ background:var(--green); }
+  #modsOnlineTopbarCount{ font-size:11px; opacity:0.8; padding:2px 6px; border:1px solid var(--border); border-radius:10px; }
   #syncStatusDot{ width:8px; height:8px; border-radius:50%; background:var(--red); display:inline-block; }
   #syncStatusDot.on{ background:var(--green); }
   #tierStatus{ opacity:0.75; }
@@ -548,24 +549,18 @@
   .am-allow{ background:var(--green); color:#0a1a0a; }
   .am-deny{ background:var(--red); color:#1a0a0a; }
 
-  #userCardBackdrop{
-    display:none; position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:50;
-    align-items:center; justify-content:center;
+  #quickUserCard{
+    display:none;
+    position:fixed;
+    background:var(--panel-solid); border:1px solid var(--gold); border-radius:8px;
+    padding:8px 12px; width:180px;
+    box-shadow:0 4px 14px rgba(0,0,0,0.5);
+    color:var(--parchment); font-size:12px; line-height:1.5;
+    z-index:50;
   }
-  #userCardBackdrop.open{ display:flex; }
-  #userCard{
-    background:var(--panel-solid); border:1px solid var(--border); border-radius:8px;
-    padding:16px; width:320px; max-width:85vw; max-height:75vh; overflow-y:auto;
-    color:var(--parchment); position:relative; font-size:13px;
-  }
-  #userCard h3{ margin:0 0 10px 0; padding-right:20px; }
-  #userCard .uc-row{ margin-bottom:5px; color:var(--parchment-dim); }
-  #userCard .uc-msglist{ margin-top:10px; border-top:1px solid var(--border); padding-top:8px; }
-  #userCard .uc-msglist div{ margin-bottom:4px; line-height:1.4; }
-  #userCard .uc-close{
-    position:absolute; top:10px; right:10px; cursor:pointer; background:none;
-    border:none; color:var(--parchment); font-size:16px; line-height:1;
-  }
+  #quickUserCard.open{ display:block; }
+  #quickUserCard .quc-name{ font-weight:700; color:var(--gold); margin-bottom:4px; }
+  #quickUserCard .quc-row{ color:var(--parchment-dim); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
   #streamStartBackdrop{
     display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:60;
@@ -867,6 +862,7 @@
     <button id="streamViewBtn">📺 Stream</button>
     <button id="stream169Btn" title="Stream-Vorschau auf 16:9 zurücksetzen (gegen Verzerren)">🔲 16:9</button>
     <button id="eventPanelBtn">📋 Events</button>
+    <span id="modsOnlineTopbarCount" style="display:none;" title="Wie viele andere Mods/der Streamer gerade eingeloggt sind"></span>
     <span id="versionWrap" style="margin-left:auto; position:relative;">
       <span id="versionLabel" style="opacity:0.5; font-size:11px;"></span>
       <div id="updateNoticeBubble">
@@ -1072,9 +1068,7 @@
     <button id="sendChatBtn">Senden</button>
   </div>
 
-  <div id="userCardBackdrop">
-    <div id="userCard"></div>
-  </div>
+  <div id="quickUserCard"></div>
 
   <div id="streamStartBackdrop">
     <div id="streamStartPopup">
@@ -1178,7 +1172,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.14.5 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.15.2 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1226,6 +1220,7 @@
     timeoutModeBtn: document.getElementById('timeoutModeBtn'),
     timeoutStatus: document.getElementById('timeoutStatus'),
     modRosterDisplay: document.getElementById('modRosterDisplay'),
+    modsOnlineTopbarCount: document.getElementById('modsOnlineTopbarCount'),
     streamToolsBtn: document.getElementById('streamToolsBtn'),
     streamToolsMenu: document.getElementById('streamToolsMenu'),
     openTimerBtn: document.getElementById('openTimerBtn'),
@@ -1267,12 +1262,11 @@
     streamFrame: document.getElementById('streamFrame'),
     streamResizeHandle: document.getElementById('streamResizeHandle'),
     streamDragOverlay: document.getElementById('streamDragOverlay'),
-    userCardBackdrop: document.getElementById('userCardBackdrop'),
+    quickUserCard: document.getElementById('quickUserCard'),
     streamStartBackdrop: document.getElementById('streamStartBackdrop'),
     streamStartCountdown: document.getElementById('streamStartCountdown'),
     streamStartResetBtn: document.getElementById('streamStartResetBtn'),
     streamStartCancelBtn: document.getElementById('streamStartCancelBtn'),
-    userCard: document.getElementById('userCard'),
   };
 
   let ws = null;
@@ -1288,6 +1282,7 @@
   let timeoutModeActive = false;
   let clientId = '';
   const tierCache = new Map();      // userId -> '1000' | '2000' | '3000' | null
+  const giftedSubUsers = new Set(); // userId von Leuten, deren aktuelles Abo (seit Tool-Start beobachtet) geschenkt wurde
   const pendingLookups = new Set();
   let batchTimer = null;
   let greetedUsers = new Map();     // userId -> Zeitstempel (Date.now()), wann diese Person begrüßt hat
@@ -1532,6 +1527,10 @@
   }
   function renderModRoster(roster){
     els.modRosterDisplay.innerHTML = '';
+    const myName = (ownDisplayName || ownLogin || '').toLowerCase();
+    const othersOnline = roster.filter(r => r.online && r.name.toLowerCase() !== myName).length;
+    els.modsOnlineTopbarCount.textContent = '🛡 Mods online: ' + othersOnline;
+    els.modsOnlineTopbarCount.style.display = isMod ? '' : 'none';
     const streamerEntry = roster.find(r => r.isBroadcaster);
     const modEntries = roster.filter(r => !r.isBroadcaster);
     if(streamerEntry){
@@ -1735,15 +1734,33 @@
     arr.push({ t: Date.now(), text });
     if(arr.length > 100) arr.shift();
   }
-  els.userCardBackdrop.onclick = (e)=>{ if(e.target === els.userCardBackdrop) closeUserCard(); };
-  function closeUserCard(){ els.userCardBackdrop.classList.remove('open'); }
 
-  async function showUserCard(userId, displayName){
-    els.userCard.innerHTML = '<button class="uc-close" onclick="document.getElementById(\'userCardBackdrop\').classList.remove(\'open\')">✕</button>'
-      + '<h3>' + escapeHtml(displayName) + '</h3><div class="uc-row">Lade Infos...</div>';
-    els.userCardBackdrop.classList.add('open');
+  function computeAccountAge(createdAtIso){
+    if(!createdAtIso) return 'unbekannt';
+    const created = new Date(createdAtIso);
+    const now = new Date();
+    let years = now.getFullYear() - created.getFullYear();
+    let months = now.getMonth() - created.getMonth();
+    if(months < 0){ years--; months += 12; }
+    if(years > 0) return years + ' Jahr' + (years === 1 ? '' : 'e') + (months > 0 ? ', ' + months + ' Mon.' : '');
+    return months + ' Monat' + (months === 1 ? '' : 'e');
+  }
+  function positionQuickCard(anchorEl){
+    const rect = anchorEl.getBoundingClientRect();
+    const card = els.quickUserCard;
+    let left = rect.left;
+    left = Math.max(4, Math.min(window.innerWidth - card.offsetWidth - 4, left));
+    let top = rect.top - card.offsetHeight - 8;
+    if(top < 4) top = rect.bottom + 8; // falls oben kein Platz ist, stattdessen unter dem Namen anzeigen
+    card.style.left = left + 'px';
+    card.style.top = top + 'px';
+  }
+  async function showUserCard(userId, displayName, anchorEl){
+    els.quickUserCard.innerHTML = '<div class="quc-name">' + escapeHtml(displayName) + '</div><div class="quc-row">Lade...</div>';
+    els.quickUserCard.classList.add('open');
+    positionQuickCard(anchorEl);
 
-    let createdAt = '', followSince = '';
+    let createdAt = '', followSince = '', followChecked = false;
     if(accessToken && clientId){
       try{
         const res = await fetch('https://api.twitch.tv/helix/users?id=' + userId, {
@@ -1756,34 +1773,30 @@
           const res2 = await fetch('https://api.twitch.tv/helix/channels/followers?broadcaster_id=' + broadcasterId + '&user_id=' + userId, {
             headers: { 'Client-Id': clientId, 'Authorization': 'Bearer ' + accessToken }
           });
-          if(res2.ok){ const d2 = await res2.json(); if(d2.data && d2.data[0]) followSince = d2.data[0].followed_at; }
+          if(res2.ok){ const d2 = await res2.json(); followChecked = true; if(d2.data && d2.data[0]) followSince = d2.data[0].followed_at; }
         }catch(e){}
       }
     }
+    if(!els.quickUserCard.classList.contains('open')) return; // in der Zwischenzeit weggeklickt
 
     const tier = tierCache.get(userId);
-    const tierLabel = tier === '3000' ? 'T3' : tier === '2000' ? 'T2' : tier === '1000' ? 'T1' : '—';
-    const msgs = (userMessageLog.get(userId) || []).slice(-30).reverse();
-    const totalCount = (userMessageLog.get(userId) || []).length;
+    const tierLabel = tier === '3000' ? 'T3' : tier === '2000' ? 'T2' : tier === '1000' ? 'T1' : null;
+    const isGifted = giftedSubUsers.has(userId);
+    const subLine = tierLabel ? ((isGifted ? '🎁 Geschenkt ' : '⭐ ') + tierLabel) : null;
 
-    let html = '<button class="uc-close" onclick="document.getElementById(\'userCardBackdrop\').classList.remove(\'open\')">✕</button>';
-    html += '<h3>' + escapeHtml(displayName) + '</h3>';
-    html += '<div class="uc-row">Account erstellt: ' + (createdAt ? new Date(createdAt).toLocaleDateString('de-DE') : 'unbekannt (nicht eingeloggt?)') + '</div>';
-    html += '<div class="uc-row">Folgt seit: ' + (followSince ? new Date(followSince).toLocaleDateString('de-DE') : 'nicht ermittelbar / folgt nicht') + '</div>';
-    html += '<div class="uc-row">Aktuelle Sub-Stufe: ' + tierLabel + '</div>';
-    html += '<div class="uc-row">Begrüßt in dieser Session: ' + (greetedUsers.has(userId) ? 'Ja' : 'Nein') + '</div>';
-    html += '<div class="uc-msglist"><b>Nachrichten seit Tool-Start (' + totalCount + '):</b>';
-    if(msgs.length){
-      msgs.forEach(m=>{
-        html += '<div>[' + new Date(m.t).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' }) + '] ' + escapeHtml(m.text) + '</div>';
-      });
-    } else {
-      html += '<div>Keine (noch keine Nachricht seit Öffnen des Tools gesehen)</div>';
-    }
-    html += '</div>';
-    html += '<div class="uc-row" style="margin-top:8px;font-style:italic;">Kein vollständiger Twitch-Chatverlauf — nur was das Tool seit dem Start selbst mitbekommen hat.</div>';
-    els.userCard.innerHTML = html;
+    let html = '<div class="quc-name">' + escapeHtml(displayName) + '</div>';
+    html += '<div class="quc-row">👣 Folgt seit: ' + (followSince ? new Date(followSince).toLocaleDateString('de-DE') : (followChecked ? 'folgt nicht' : 'unbekannt')) + '</div>';
+    html += '<div class="quc-row">🎂 Account: ' + computeAccountAge(createdAt) + '</div>';
+    if(subLine) html += '<div class="quc-row">' + subLine + '</div>';
+    els.quickUserCard.innerHTML = html;
+    positionQuickCard(anchorEl); // Höhe kann sich durch den echten Inhalt geändert haben
   }
+  document.addEventListener('click', (e)=>{
+    if(els.quickUserCard.classList.contains('open') && !els.quickUserCard.contains(e.target)){
+      els.quickUserCard.classList.remove('open');
+    }
+  });
+
 
   // ---------- Mod-Ansicht / Timeout-Tool ----------
   els.modViewBtn.onclick = ()=>{ els.modToolbar.classList.toggle('open'); };
@@ -2701,6 +2714,9 @@
       syncSend({ type: 'setTier', userId: targetUserId, tier: tier });
       updateRenderedTiers([targetUserId]);
     }
+    if((msgId === 'subgift' || msgId === 'anonsubgift') && targetUserId){
+      giftedSubUsers.add(targetUserId); // für's Kärtchen: Geschenkbox statt Stern anzeigen
+    }
 
     // Einzelne (nicht per Massen-Gift-Funktion verschenkte) Gifts selbst zusammenfassen,
     // damit 5+ schnelle Einzel-Gifts derselben Person nicht als 5+ Zeilen auftauchen
@@ -3363,7 +3379,10 @@
     const nameSpan = document.createElement('span');
     nameSpan.className = 'display-name';
     nameSpan.style.color = ensureReadableColor(color);
+    nameSpan.style.cursor = 'pointer';
+    nameSpan.title = 'Klicken für Infos zu dieser Person';
     nameSpan.textContent = displayName + ':';
+    nameSpan.onclick = (e)=>{ e.stopPropagation(); showUserCard(userId, displayName, nameSpan); };
     mainLine.appendChild(nameSpan);
 
     logUserMessage(userId, message);
@@ -3424,9 +3443,12 @@
         el.onclick = ()=>{ if(timeoutModeActive) executeTimeout(el.dataset.userId, el.dataset.displayName || '', el); };
         const statusIconEl = el.querySelector('.status-icon');
         if(statusIconEl) statusIconEl.onclick = (e)=>{ e.stopPropagation(); toggleGreetedManually(el.dataset.userId); };
-        // Namens-Klick (Infokarte) bewusst vorerst deaktiviert
         const nameEl = el.querySelector('.display-name');
-        if(nameEl){ nameEl.style.cursor = ''; nameEl.title = ''; nameEl.onclick = null; }
+        if(nameEl){
+          nameEl.style.cursor = 'pointer';
+          nameEl.title = 'Klicken für Infos zu dieser Person';
+          nameEl.onclick = (e)=>{ e.stopPropagation(); showUserCard(el.dataset.userId, el.dataset.displayName || '', nameEl); };
+        }
       }
       els.chat.appendChild(el);
       messageHistory.push(html);
@@ -3468,7 +3490,9 @@
   const savedChatMode = localStorage.getItem('ligaChatOverlayChatMode');
   if(savedChatMode) els.chatModeSelect.value = savedChatMode;
   updateModsOnlyOptionAvailability();
-  restoreHistory();
+  // restoreHistory() bewusst NICHT mehr aufgerufen: Der Server-Verlauf (per Merge sortiert) deckt das jetzt
+  // zuverlässig ab; paralleles lokales Wiederherstellen hat zu doppelt angezeigten Nachrichten nach F5 geführt
+  // (gleiches Problem wie beim Mod-Chat vorher, gleiche Lösung: nur eine Quelle der Wahrheit).
   const savedDraft = localStorage.getItem('ligaChatOverlayDraft');
   if(savedDraft){ els.chatMessageInput.value = savedDraft; }
   if(localStorage.getItem('ligaChatOverlayTransparent') === '1'){
