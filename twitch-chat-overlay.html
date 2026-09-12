@@ -146,6 +146,17 @@
     font-size:12px;
   }
   #settingsPanel.open{ display:flex; }
+  #connectionSettingsToggleBtn{
+    align-self:flex-start;
+    background:var(--ink); color:var(--parchment); border:1px solid var(--border);
+    border-radius:5px; padding:6px 10px; cursor:pointer; font-size:12px;
+  }
+  #connectionSettingsBody{
+    display:none;
+    flex-direction:column; gap:8px;
+    border:1px dashed var(--border); border-radius:6px; padding:10px; margin-top:4px;
+  }
+  #connectionSettingsBody.open{ display:flex; }
   #settingsPanel label{ display:flex; flex-direction:column; gap:3px; }
   #settingsPanel input, #settingsPanel textarea{
     background:var(--input-bg); color:var(--parchment);
@@ -253,6 +264,13 @@
     background:var(--ink); color:var(--parchment); border:1px solid var(--border);
     border-radius:4px; padding:6px; font-family:inherit; font-size:12px; box-sizing:border-box;
   }
+  .greetings-log-item{
+    display:flex; justify-content:space-between; gap:8px;
+    padding:4px 6px; border-radius:4px; font-size:12px;
+    background: rgba(255,255,255,0.04);
+  }
+  .greetings-log-item .glt-time{ opacity:0.55; flex:0 0 auto; }
+  .greetings-log-empty{ opacity:0.5; font-size:12px; text-align:center; padding:10px 0; }
 
   #emergencyComposeBackdrop{
     display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:80;
@@ -910,6 +928,7 @@
           <button id="openTimerBtn" type="button">⏱ Stoppuhr / Timer</button>
           <button id="openNotepadBtn" type="button">📝 Notizblock</button>
           <button id="openEmergencyBtn" type="button">🚨 Notfall-Nachricht</button>
+          <button id="openGreetingsLogBtn" type="button">👋 Begrüßungen</button>
         </div>
       </div>
       <span id="timeoutStatus"></span>
@@ -918,29 +937,32 @@
   </div>
 
   <div id="settingsPanel">
-    <div class="row">
-      <label>Twitch-Channel (Name aus der URL)
-        <input id="channelInput" placeholder="z.B. meinkanal">
-      </label>
-      <button id="connectBtn">Chat verbinden</button>
-    </div>
+    <button id="connectionSettingsToggleBtn" type="button">🔒 Verbindung (Channel / Client-ID) ▸</button>
+    <div id="connectionSettingsBody">
+      <div class="row">
+        <label>Twitch-Channel (Name aus der URL)
+          <input id="channelInput" placeholder="z.B. meinkanal">
+        </label>
+        <button id="connectBtn">Chat verbinden</button>
+      </div>
 
-    <div class="row">
-      <label style="flex:1;min-width:220px">Twitch Client-ID (für echte T1/T2/T3-Anzeige + Mod-Tools)
-        <input id="clientIdInput" placeholder="Client-ID aus dev.twitch.tv/console">
-      </label>
-      <button id="loginBtn">Mit Twitch verbinden (Login)</button>
+      <div class="row">
+        <label style="flex:1;min-width:220px">Twitch Client-ID (für echte T1/T2/T3-Anzeige + Mod-Tools)
+          <input id="clientIdInput" placeholder="Client-ID aus dev.twitch.tv/console">
+        </label>
+        <button id="loginBtn">Mit Twitch verbinden (Login)</button>
+      </div>
+      <small>
+        Ohne Login wird bei Abos nur ein neutrales „Sub"-Badge angezeigt, und Mod-Tools sind nicht verfügbar.
+        Für echte T1/T2/T3-Badges und die Mod-Ansicht (Timeout-Tool) brauchst du einmalig eine eigene Twitch-App:
+        <a href="https://dev.twitch.tv/console/apps" target="_blank">dev.twitch.tv/console/apps</a> →
+        neue App anlegen → als „OAuth Redirect URL" <b>genau die Adresse eintragen, unter der diese Datei später erreichbar ist</b>
+        (z.B. eine GitHub-Pages-URL oder <code>http://localhost:PORT/...</code>, wenn du sie lokal per kleinem Webserver öffnest —
+        ein reines <code>file://</code> funktioniert bei Twitch-Login nicht). Die Client-ID hier eintragen, dann auf „Mit Twitch verbinden" klicken.
+        Mods loggen sich mit demselben Link und derselben Client-ID einfach mit ihrem eigenen Twitch-Account ein — die Client-ID ist kein Geheimnis,
+        die kann jeder benutzen, der den Link hat.
+      </small>
     </div>
-    <small>
-      Ohne Login wird bei Abos nur ein neutrales „Sub"-Badge angezeigt, und Mod-Tools sind nicht verfügbar.
-      Für echte T1/T2/T3-Badges und die Mod-Ansicht (Timeout-Tool) brauchst du einmalig eine eigene Twitch-App:
-      <a href="https://dev.twitch.tv/console/apps" target="_blank">dev.twitch.tv/console/apps</a> →
-      neue App anlegen → als „OAuth Redirect URL" <b>genau die Adresse eintragen, unter der diese Datei später erreichbar ist</b>
-      (z.B. eine GitHub-Pages-URL oder <code>http://localhost:PORT/...</code>, wenn du sie lokal per kleinem Webserver öffnest —
-      ein reines <code>file://</code> funktioniert bei Twitch-Login nicht). Die Client-ID hier eintragen, dann auf „Mit Twitch verbinden" klicken.
-      Mods loggen sich mit demselben Link und derselben Client-ID einfach mit ihrem eigenen Twitch-Account ein — die Client-ID ist kein Geheimnis,
-      die kann jeder benutzen, der den Link hat.
-    </small>
 
     <div class="row">
       <label style="flex-direction:row; align-items:center; gap:6px;">
@@ -1039,6 +1061,16 @@
     </div>
     <div class="fw-body">
       <textarea id="notepadTextarea" placeholder="Nur für dich, bleibt lokal gespeichert..."></textarea>
+    </div>
+  </div>
+
+  <div id="greetingsLogWidget" class="floating-widget" style="width:260px;">
+    <div class="fw-header">
+      <span class="fw-drag-handle">👋 Begrüßungen heute</span>
+      <button class="fw-close" data-target="greetingsLogWidget" type="button">✕</button>
+    </div>
+    <div class="fw-body">
+      <div id="greetingsLogList" style="max-height:280px; overflow-y:auto; display:flex; flex-direction:column; gap:4px;"></div>
     </div>
   </div>
 
@@ -1189,10 +1221,12 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.18.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.19.1 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
+    connectionSettingsToggleBtn: document.getElementById('connectionSettingsToggleBtn'),
+    connectionSettingsBody: document.getElementById('connectionSettingsBody'),
     clientId: document.getElementById('clientIdInput'),
     greetings: document.getElementById('greetingsInput'),
     syncGreetingsBtn: document.getElementById('syncGreetingsBtn'),
@@ -1243,6 +1277,7 @@
     streamToolsMenu: document.getElementById('streamToolsMenu'),
     openTimerBtn: document.getElementById('openTimerBtn'),
     openNotepadBtn: document.getElementById('openNotepadBtn'),
+    openGreetingsLogBtn: document.getElementById('openGreetingsLogBtn'),
     timerWidget: document.getElementById('timerWidget'),
     timerDisplay: document.getElementById('timerDisplay'),
     timerDurationInput: document.getElementById('timerDurationInput'),
@@ -1250,6 +1285,8 @@
     timerPauseBtn: document.getElementById('timerPauseBtn'),
     timerResetBtn: document.getElementById('timerResetBtn'),
     notepadWidget: document.getElementById('notepadWidget'),
+    greetingsLogWidget: document.getElementById('greetingsLogWidget'),
+    greetingsLogList: document.getElementById('greetingsLogList'),
     notepadTextarea: document.getElementById('notepadTextarea'),
     openEmergencyBtn: document.getElementById('openEmergencyBtn'),
     emergencyComposeBackdrop: document.getElementById('emergencyComposeBackdrop'),
@@ -1494,7 +1531,7 @@
         });
         insertSessionDivider('Neue Session gestartet — Begrüßungen zurückgesetzt');
       } else if(msg.type === 'sessionPruneEvent'){
-        insertSessionDivider('Streamstart — alte Begrüßungen zurückgesetzt');
+        insertSessionDivider('Streamstart — alte Begrüßungen zurückgesetzt', msg.cutoff);
       } else if(msg.type === 'timerUpdate'){
         applyTimerState(msg.state);
       } else if(msg.type === 'emergencyMessage'){
@@ -1705,7 +1742,7 @@
     });
     persistGreeted();
     if(toRemove.length){
-      syncSend({ type: 'sessionPruneEvent' }); // Trenner-Anzeige läuft über den Empfang, damit alle (inkl. hier) sie synchron sehen
+      syncSend({ type: 'sessionPruneEvent', cutoff: cutoff }); // Trenner-Anzeige läuft über den Empfang, damit alle (inkl. hier) sie synchron sehen
     }
   }
 
@@ -1904,6 +1941,10 @@
   els.gateLoginBtn.onclick = ()=>{ els.loginBtn.click(); };
   // ---------- Stream-Tools: Menü, verschiebbare Fenster, Timer (synchron), Notizblock (nur lokal) ----------
   els.streamToolsBtn.onclick = (e)=>{ e.stopPropagation(); els.streamToolsMenu.classList.toggle('open'); };
+  els.connectionSettingsToggleBtn.onclick = ()=>{
+    const nowOpen = els.connectionSettingsBody.classList.toggle('open');
+    els.connectionSettingsToggleBtn.textContent = '🔒 Verbindung (Channel / Client-ID) ' + (nowOpen ? '▾' : '▸');
+  };
   document.addEventListener('click', (e)=>{
     if(els.streamToolsMenu.classList.contains('open') && !els.streamToolsMenu.contains(e.target) && e.target !== els.streamToolsBtn){
       els.streamToolsMenu.classList.remove('open');
@@ -1953,6 +1994,7 @@
   }
   const clampTimerWidget = makeDraggable(els.timerWidget, els.timerWidget.querySelector('.fw-header'));
   const clampNotepadWidget = makeDraggable(els.notepadWidget, els.notepadWidget.querySelector('.fw-header'));
+  const clampGreetingsLogWidget = makeDraggable(els.greetingsLogWidget, els.greetingsLogWidget.querySelector('.fw-header'));
 
   document.querySelectorAll('.fw-close').forEach(btn=>{
     btn.onclick = ()=>{ document.getElementById(btn.dataset.target).classList.remove('open'); };
@@ -1960,6 +2002,26 @@
 
   els.openTimerBtn.onclick = ()=>{ els.timerWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); clampTimerWidget(); };
   els.openNotepadBtn.onclick = ()=>{ els.notepadWidget.classList.add('open'); els.streamToolsMenu.classList.remove('open'); clampNotepadWidget(); };
+  els.openGreetingsLogBtn.onclick = ()=>{
+    els.greetingsLogWidget.classList.add('open');
+    els.streamToolsMenu.classList.remove('open');
+    clampGreetingsLogWidget();
+    renderGreetingsLog();
+  };
+  const firstGreetingsLog = []; // { displayName, ts } — nur diese Sitzung, um beim Streamstart schnell durchzugehen wer schon begrüßt wurde
+  function logFirstGreeting(displayName, ts){
+    firstGreetingsLog.push({ displayName, ts });
+    if(els.greetingsLogWidget.classList.contains('open')) renderGreetingsLog();
+  }
+  function renderGreetingsLog(){
+    if(!firstGreetingsLog.length){
+      els.greetingsLogList.innerHTML = '<div class="greetings-log-empty">Noch niemand begrüßt in dieser Sitzung.</div>';
+      return;
+    }
+    els.greetingsLogList.innerHTML = firstGreetingsLog.slice().reverse().map(entry =>
+      '<div class="greetings-log-item"><span>' + escapeHtml(entry.displayName) + '</span><span class="glt-time">' + formatShortTime(entry.ts) + '</span></div>'
+    ).join('');
+  }
 
   // ---------- Notfall-Nachricht ----------
   els.openEmergencyBtn.onclick = ()=>{
@@ -2830,7 +2892,7 @@
         const cumulative = esc(tags['msg-param-cumulative-months'] || tags['msg-param-months'] || '?');
         const streak = tags['msg-param-streak-months'];
         const streakPart = streak && streak !== '0' ? ' (' + esc(streak) + ' Monate am Stück)' : '';
-        return name + ' ist seit <b>' + cumulative + ' Monaten</b> dabei' + streakPart + ' — ' + tierLabel + '! 🎉';
+        return name + ' — ' + tierLabel + ', seit <b>' + cumulative + ' Monaten</b> dabei' + streakPart + '! 🎉';
       }
       case 'subgift':
         // Teil einer Massen-Gift-Welle? -> nicht einzeln anzeigen, das übernimmt die "submysterygift"-Sammelzeile
@@ -3337,12 +3399,23 @@
     div.innerHTML = '<span></span><b>📅 Neuer Tag — ' + dateStr + '</b><span></span>';
     els.chat.appendChild(div);
   }
-  function insertSessionDivider(label){
+  function insertSessionDivider(label, cutoffTs){
     const div = document.createElement('div');
     div.className = 'day-divider session-divider';
     div.innerHTML = '<span></span><b>🔄 ' + label + '</b><span></span>';
     const wasNearBottom = isNearBottom();
-    els.chat.appendChild(div);
+    let insertBefore = null;
+    if(cutoffTs){
+      // Chronologisch richtig einsortieren statt immer ganz unten anzuhängen — sonst sehen frühe
+      // Begrüßungen, die schon vor dem tatsächlichen Auslösen dieses Resets reinkamen, fälschlich
+      // wie "alt" aus, obwohl sie eigentlich schon zur neuen Session gehören.
+      const rows = els.chat.querySelectorAll('.chat-row[data-msg-ts]');
+      for(const row of rows){
+        if(parseInt(row.dataset.msgTs, 10) >= cutoffTs){ insertBefore = row; break; }
+      }
+    }
+    if(insertBefore) els.chat.insertBefore(div, insertBefore);
+    else els.chat.appendChild(div);
     if(wasNearBottom && !timeoutModeActive) els.chat.scrollTop = els.chat.scrollHeight;
   }
 
@@ -3369,6 +3442,7 @@
       persistGreeted();
       syncSend({ type: 'greet', userId: userId, ts: ts });
       firstGreeting = true;
+      if(!opts.isReplay) logFirstGreeting(displayName, ts);
     }
     const greetedNow = greetedUsers.has(userId);
     const mentioned = isMentioningMe(message);
@@ -3377,6 +3451,7 @@
     const row = document.createElement('div');
     row.className = 'chat-row' + (firstGreeting ? ' first-greeting' : '') + (timeoutModeActive ? ' timeout-armed' : '') + (mentioned ? ' mentioned-row' : '') + (isFirstMsg ? ' first-chatter-row' : '') + (repliedToMe ? ' reply-to-me-row' : '');
     row.dataset.userId = userId;
+    row.dataset.msgTs = ts;
     row.dataset.displayName = displayName;
     row.dataset.messageText = message;
     if(messageId) row.dataset.messageId = messageId;
