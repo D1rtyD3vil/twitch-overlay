@@ -312,6 +312,27 @@
   }
 
 
+  .msg-time{
+    margin-left:auto;
+    padding-left:8px;
+    font-size:9px;
+    color:var(--parchment-dim);
+    opacity:0.6;
+    white-space:nowrap;
+    align-self:center;
+  }
+
+  .day-divider{
+    display:flex; align-items:center; gap:10px;
+    margin:10px 0;
+    color:var(--parchment-dim);
+    font-size:11px;
+  }
+  .day-divider span{ flex:1; height:1px; background:var(--border); }
+  .day-divider b{ white-space:nowrap; color:var(--gold); font-weight:700; }
+  .day-divider.session-divider b{ color:#38bdf8; }
+  .day-divider.session-divider span{ background:#38bdf8; opacity:0.4; }
+
   .chat-row.mentioned-row{
     border-left-color: #38bdf8;
     background-color: rgba(56, 189, 248, 0.22);
@@ -918,7 +939,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.7.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.9.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1190,6 +1211,9 @@
         document.querySelectorAll('.status-icon').forEach(el=>{
           el.className = 'status-icon no'; el.innerHTML = CROSS_SVG;
         });
+        insertSessionDivider('Neue Session gestartet — Begrüßungen zurückgesetzt');
+      } else if(msg.type === 'sessionPruneEvent'){
+        insertSessionDivider('Streamstart — alte Begrüßungen zurückgesetzt');
       } else if(msg.type === 'tierUpdate'){
         tierCache.set(msg.userId, msg.tier);
         updateRenderedTiers([msg.userId]);
@@ -1375,6 +1399,9 @@
       });
     });
     persistGreeted();
+    if(toRemove.length){
+      syncSend({ type: 'sessionPruneEvent' }); // Trenner-Anzeige läuft über den Empfang, damit alle (inkl. hier) sie synchron sehen
+    }
   }
 
   let streamStartCountdownTimer = null;
@@ -2682,8 +2709,34 @@
     }));
   }
 
-  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId, replyTo, isFirstMsg, wasFirstGreeting }, opts){
+  let lastMessageDateStr = null; // für den "Neuer Tag"-Trenner: Datum der zuletzt gerenderten Nachricht
+  function formatShortTime(ts){
+    const d = new Date(ts);
+    return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0');
+  }
+  function insertDayDivider(dateStr){
+    const div = document.createElement('div');
+    div.className = 'day-divider';
+    div.innerHTML = '<span></span><b>📅 Neuer Tag — ' + dateStr + '</b><span></span>';
+    els.chat.appendChild(div);
+  }
+  function insertSessionDivider(label){
+    const div = document.createElement('div');
+    div.className = 'day-divider session-divider';
+    div.innerHTML = '<span></span><b>🔄 ' + label + '</b><span></span>';
+    const wasNearBottom = isNearBottom();
+    els.chat.appendChild(div);
+    if(wasNearBottom && !timeoutModeActive) els.chat.scrollTop = els.chat.scrollHeight;
+  }
+
+  function renderMessage({ displayName, userId, color, badges, message, emotes, messageId, replyTo, isFirstMsg, wasFirstGreeting, ts }, opts){
     opts = opts || {};
+    ts = ts || Date.now();
+    const dateStr = new Date(ts).toLocaleDateString('de-DE');
+    if(lastMessageDateStr && lastMessageDateStr !== dateStr){
+      insertDayDivider(dateStr);
+    }
+    lastMessageDateStr = dateStr;
     const isSub = Object.prototype.hasOwnProperty.call(badges, 'subscriber') || Object.prototype.hasOwnProperty.call(badges, 'founder');
     const greeting = isGreetingMessage(message);
     const alreadyGreeted = greetedUsers.has(userId);
@@ -2785,6 +2838,11 @@
     msgSpan.className = 'message-text';
     msgSpan.innerHTML = ' ' + buildMessageHtml(message, emotes);
     row.appendChild(msgSpan);
+
+    const timeSpan = document.createElement('span');
+    timeSpan.className = 'msg-time';
+    timeSpan.textContent = formatShortTime(ts);
+    row.appendChild(timeSpan);
 
     const wasNearBottom = isNearBottom();
     els.chat.appendChild(row);
