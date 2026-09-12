@@ -120,6 +120,20 @@
   }
   #updateNoticeReloadBtn{ background:var(--gold) !important; color:#1a0f00 !important; font-weight:700; border:none !important; margin-right:6px; }
 
+  #loginNoticeBubble{
+    display:none;
+    position:absolute; top:calc(100% + 8px); right:0;
+    white-space:nowrap;
+    background:var(--panel-solid); border:1px solid var(--green); border-radius:8px;
+    padding:6px 12px;
+    box-shadow:0 4px 12px rgba(0,0,0,0.5);
+    font-size:12px; color:var(--parchment);
+    z-index:49;
+    opacity:0;
+    transition:opacity 0.3s;
+  }
+  #loginNoticeBubble.open{ display:block; opacity:1; }
+
   #settingsPanel{
     display:none;
     flex-direction:column;
@@ -261,7 +275,7 @@
   }
   .chat-row{
     display:flex; align-items:baseline; gap:6px; flex-wrap:wrap;
-    padding:4px 26px 4px 8px;
+    padding:4px 8px;
     margin-bottom:4px;
     border-radius:5px;
     background: var(--panel);
@@ -707,6 +721,7 @@
         <button id="updateNoticeReloadBtn" type="button">Neu laden</button>
         <button id="updateNoticeDismissBtn" type="button">✕</button>
       </div>
+      <div id="loginNoticeBubble"></div>
     </span>
   </div>
 
@@ -940,7 +955,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.9.1 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.10.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -966,6 +981,7 @@
     updateNoticeText: document.getElementById('updateNoticeText'),
     updateNoticeReloadBtn: document.getElementById('updateNoticeReloadBtn'),
     updateNoticeDismissBtn: document.getElementById('updateNoticeDismissBtn'),
+    loginNoticeBubble: document.getElementById('loginNoticeBubble'),
     connLabel: document.getElementById('connLabel'),
     tierStatus: document.getElementById('tierStatus'),
     chat: document.getElementById('chat'),
@@ -1109,6 +1125,7 @@
   let syncWs = null;
   let hasReplayedHistory = false; // Chat-/Event-Verlauf nur beim allerersten Verbinden übernehmen, nicht bei jedem Reconnect
   let hasReplayedModChatHistory = false; // Mod-Chat-Verlauf ebenso nur einmal übernehmen, nicht bei jedem "identify"
+  let loginNoticeTimer = null;
 
   // Normaler Chat-Verlauf und Mod-Chat-Verlauf kommen zeitlich getrennt vom Server an (Mod-Chat erst nach
   // dem "identify"). Damit beim Wiederherstellen nach F5 alles in der richtigen zeitlichen Reihenfolge
@@ -1215,6 +1232,11 @@
         insertSessionDivider('Neue Session gestartet — Begrüßungen zurückgesetzt');
       } else if(msg.type === 'sessionPruneEvent'){
         insertSessionDivider('Streamstart — alte Begrüßungen zurückgesetzt');
+      } else if(msg.type === 'loginNotice'){
+        els.loginNoticeBubble.textContent = '🟢 ' + msg.name + ' eingeloggt';
+        els.loginNoticeBubble.classList.add('open');
+        clearTimeout(loginNoticeTimer);
+        loginNoticeTimer = setTimeout(()=>{ els.loginNoticeBubble.classList.remove('open'); }, 3000);
       } else if(msg.type === 'tierUpdate'){
         tierCache.set(msg.userId, msg.tier);
         updateRenderedTiers([msg.userId]);
