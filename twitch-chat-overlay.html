@@ -173,13 +173,17 @@
 
   #modToolbar{
     display:none;
-    align-items:center; gap:10px; flex-wrap:wrap;
+    flex-direction:column; gap:6px;
     padding:8px 10px;
     background: var(--modbar-bg);
     border-bottom:1px solid var(--border);
     font-size:12px;
   }
   #modToolbar.open{ display:flex; }
+  #modToolbarControls{
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  #modRosterDisplay{ margin-left:0 !important; }
   #modToolbar input[type=number]{
     width:56px; background:var(--input-bg); color:var(--parchment);
     border:1px solid var(--border); border-radius:4px; padding:4px 6px; font-size:12px;
@@ -875,20 +879,22 @@
   <div id="streamDragOverlay"></div>
 
   <div id="modToolbar">
-    <span>⏱ Timeout:</span>
-    <input type="number" id="timeoutSeconds" min="1" step="1" value="600"> <span id="timeoutUnitLabel">Sek.</span>
-    <button id="timeoutUnitBtn" title="Zwischen Sekunden und Minuten umschalten">⇄ Min.</button>
-    <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
-    <span style="opacity:0.4">|</span>
-    <div id="streamToolsWrap" style="position:relative;">
-      <button id="streamToolsBtn">🛠 Stream-Tools</button>
-      <div id="streamToolsMenu">
-        <button id="openTimerBtn" type="button">⏱ Stoppuhr / Timer</button>
-        <button id="openNotepadBtn" type="button">📝 Notizblock</button>
-        <button id="openEmergencyBtn" type="button">🚨 Notfall-Nachricht</button>
+    <div id="modToolbarControls">
+      <span>⏱ Timeout:</span>
+      <input type="number" id="timeoutSeconds" min="1" step="1" value="600"> <span id="timeoutUnitLabel">Sek.</span>
+      <button id="timeoutUnitBtn" title="Zwischen Sekunden und Minuten umschalten">⇄ Min.</button>
+      <button id="timeoutModeBtn">Timeout-Modus: AUS</button>
+      <span style="opacity:0.4">|</span>
+      <div id="streamToolsWrap" style="position:relative;">
+        <button id="streamToolsBtn">🛠 Stream-Tools</button>
+        <div id="streamToolsMenu">
+          <button id="openTimerBtn" type="button">⏱ Stoppuhr / Timer</button>
+          <button id="openNotepadBtn" type="button">📝 Notizblock</button>
+          <button id="openEmergencyBtn" type="button">🚨 Notfall-Nachricht</button>
+        </div>
       </div>
+      <span id="timeoutStatus"></span>
     </div>
-    <span id="timeoutStatus"></span>
     <span id="modRosterDisplay"></span>
   </div>
 
@@ -1166,7 +1172,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.14.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.14.2 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -2238,6 +2244,14 @@
       .sort((a, b) => b[1].lastSeen - a[1].lastSeen)
       .slice(0, 6);
     if(!matches.length){ closeMentionSuggestions(); return; }
+
+    // Position direkt über dem "@" im Text, genau wie die Emote-Vorschau
+    const inputPaddingLeft = 8;
+    emoteMeasureSpan.textContent = value.substring(0, wordStart);
+    const preWidth = emoteMeasureSpan.offsetWidth;
+    const left = els.chatMessageInput.offsetLeft + inputPaddingLeft + preWidth - els.chatMessageInput.scrollLeft;
+    els.mentionSuggestPopup.style.left = left + 'px';
+
     els.mentionSuggestPopup.innerHTML = '';
     matches.forEach(([id, info], i)=>{
       const item = document.createElement('div');
