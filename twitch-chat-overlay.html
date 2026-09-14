@@ -62,6 +62,22 @@
     border:none; border-radius:6px; padding:10px 18px; font-size:14px; cursor:pointer;
   }
   #accessGate button:hover{ filter:brightness(1.08); }
+  #gateSetupToggleBtn{
+    background:transparent !important; color:var(--parchment-dim) !important; font-weight:400 !important;
+    border:1px solid var(--border) !important; font-size:11px !important; padding:6px 10px !important;
+    margin-top:14px;
+  }
+  #gateSetupBody{
+    display:none; flex-direction:column; gap:8px; text-align:left;
+    margin-top:10px; padding:10px; border:1px dashed var(--border); border-radius:6px;
+  }
+  #gateSetupBody.open{ display:flex; }
+  #gateSetupBody label{ display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--parchment-dim); }
+  #gateSetupBody input{
+    background:var(--ink); color:var(--parchment); border:1px solid var(--border);
+    border-radius:4px; padding:6px; font-size:12px;
+  }
+  #gateSetupBody button{ font-size:12px !important; padding:7px 12px !important; }
 
   /* ---------- Kopfleiste / Einstellungen ---------- */
   #topbar{
@@ -867,6 +883,16 @@
     <h2>👋 Willkommen im Chat-Tool</h2>
     <p id="gateMessage">Logg dich mit deinem Twitch-Account ein, um mitzuschreiben. Mods und der Streamer bekommen automatisch zusätzliche Werkzeuge.</p>
     <button id="gateLoginBtn">Mit Twitch verbinden (Login)</button>
+    <button id="gateSetupToggleBtn" type="button">⚙ Ersteinrichtung (Channel / Client-ID) ▸</button>
+    <div id="gateSetupBody">
+      <label>Twitch-Channel (Name aus der URL)
+        <input id="gateChannelInput" placeholder="z.B. meinkanal">
+      </label>
+      <label>Twitch Client-ID (aus dev.twitch.tv/console)
+        <input id="gateClientIdInput" placeholder="Client-ID">
+      </label>
+      <button id="gateSetupSaveBtn" type="button">Speichern</button>
+    </div>
   </div>
 </div>
 
@@ -1222,7 +1248,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.21.0 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.21.1 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1238,6 +1264,11 @@
     appContent: document.getElementById('appContent'),
     gateMessage: document.getElementById('gateMessage'),
     gateLoginBtn: document.getElementById('gateLoginBtn'),
+    gateSetupToggleBtn: document.getElementById('gateSetupToggleBtn'),
+    gateSetupBody: document.getElementById('gateSetupBody'),
+    gateChannelInput: document.getElementById('gateChannelInput'),
+    gateClientIdInput: document.getElementById('gateClientIdInput'),
+    gateSetupSaveBtn: document.getElementById('gateSetupSaveBtn'),
     saveBtn: document.getElementById('saveSettingsBtn'),
     toggleSettings: document.getElementById('toggleSettings'),
     resetAllBtn: document.getElementById('resetAllSessionBtn'),
@@ -1942,6 +1973,21 @@
 
   // ---------- Twitch OAuth (Implicit Grant, nur für Sub-Tier-Abfrage) ----------
   els.gateLoginBtn.onclick = ()=>{ els.loginBtn.click(); };
+  els.gateSetupToggleBtn.onclick = ()=>{
+    const nowOpen = els.gateSetupBody.classList.toggle('open');
+    els.gateSetupToggleBtn.textContent = '⚙ Ersteinrichtung (Channel / Client-ID) ' + (nowOpen ? '▾' : '▸');
+    if(nowOpen){
+      els.gateChannelInput.value = els.channel.value || '';
+      els.gateClientIdInput.value = els.clientId.value || '';
+    }
+  };
+  els.gateSetupSaveBtn.onclick = ()=>{
+    els.channel.value = els.gateChannelInput.value.trim();
+    els.clientId.value = els.gateClientIdInput.value.trim();
+    saveConfig();
+    els.gateSetupSaveBtn.textContent = '✓ Gespeichert';
+    setTimeout(()=>{ els.gateSetupSaveBtn.textContent = 'Speichern'; }, 1500);
+  };
   // ---------- Stream-Tools: Menü, verschiebbare Fenster, Timer (synchron), Notizblock (nur lokal) ----------
   els.streamToolsBtn.onclick = (e)=>{ e.stopPropagation(); els.streamToolsMenu.classList.toggle('open'); };
   els.connectionSettingsToggleBtn.onclick = ()=>{
