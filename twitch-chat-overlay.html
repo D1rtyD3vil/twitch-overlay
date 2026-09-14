@@ -146,6 +146,7 @@
     font-size:12px;
   }
   #settingsPanel.open{ display:flex; }
+  #appContent.viewer-mode #connectionSettingsToggleBtn{ display:none; }
   #connectionSettingsToggleBtn{
     align-self:flex-start;
     background:var(--ink); color:var(--parchment); border:1px solid var(--border);
@@ -863,8 +864,8 @@
 <body>
 <div id="accessGate">
   <div class="gate-box">
-    <h2>🔒 Mod-Zugang</h2>
-    <p id="gateMessage">Dieses Tool ist nur für Mods und den Streamer des Kanals gedacht. Logg dich mit deinem Twitch-Account ein, um zu prüfen, ob du Zugriff hast.</p>
+    <h2>👋 Willkommen im Chat-Tool</h2>
+    <p id="gateMessage">Logg dich mit deinem Twitch-Account ein, um mitzuschreiben. Mods und der Streamer bekommen automatisch zusätzliche Werkzeuge.</p>
     <button id="gateLoginBtn">Mit Twitch verbinden (Login)</button>
   </div>
 </div>
@@ -1221,7 +1222,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.20.1 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.21.0 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -2119,10 +2120,11 @@
       els.accessGate.classList.add('hidden');
       els.appContent.classList.add('unlocked');
     } else if(ownUserId){
-      // Eingeloggt, aber bestätigt kein Mod/Streamer -> Sperre bleibt, mit klarer Meldung
-      els.gateMessage.textContent = 'Du bist bei "' + (els.channel.value || 'diesem Kanal') + '" nicht als Mod eingetragen — dieses Tool ist nur für Mods und den Streamer gedacht.';
-      els.gateLoginBtn.textContent = 'Mit anderem Account verbinden';
-      els.gateLoginBtn.style.display = '';
+      // Eingeloggt, aber kein Mod/Streamer -> als Zuschauer durchlassen, nur mit eingeschränkter Ansicht
+      // (Mod-Knöpfe sind an anderer Stelle schon an isMod gekoppelt und bleiben dadurch automatisch versteckt)
+      els.accessGate.classList.add('hidden');
+      els.appContent.classList.add('unlocked');
+      els.appContent.classList.add('viewer-mode');
     }
   }
   els.loginBtn.onclick = ()=>{
