@@ -73,6 +73,7 @@
   }
   #gateSetupBody.open{ display:flex; }
   #gateSetupBody label{ display:flex; flex-direction:column; gap:3px; font-size:11px; color:var(--parchment-dim); }
+  #gateSetupBody input[readonly], #settingsPanel input[readonly]{ opacity:0.6; cursor:not-allowed; }
   #gateSetupBody input{
     background:var(--ink); color:var(--parchment); border:1px solid var(--border);
     border-radius:4px; padding:6px; font-size:12px;
@@ -886,7 +887,7 @@
     <button id="gateSetupToggleBtn" type="button">⚙ Ersteinrichtung (Channel / Client-ID) ▸</button>
     <div id="gateSetupBody">
       <label>Twitch-Channel (Name aus der URL)
-        <input id="gateChannelInput" placeholder="z.B. meinkanal">
+        <input id="gateChannelInput" placeholder="z.B. meinkanal" readonly title="Fest eingestellt — dieses Tool verbindet nur mit diesem Kanal">
       </label>
       <label>Twitch Client-ID (aus dev.twitch.tv/console)
         <input id="gateClientIdInput" placeholder="Client-ID">
@@ -968,7 +969,7 @@
     <div id="connectionSettingsBody">
       <div class="row">
         <label>Twitch-Channel (Name aus der URL)
-          <input id="channelInput" placeholder="z.B. meinkanal">
+          <input id="channelInput" placeholder="z.B. meinkanal" readonly title="Fest eingestellt — dieses Tool verbindet nur mit diesem Kanal">
         </label>
         <button id="connectBtn">Chat verbinden</button>
       </div>
@@ -1248,7 +1249,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.21.1 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.21.3 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1380,7 +1381,7 @@
   function loadConfig(){
     let cfg = {};
     try{ cfg = JSON.parse(localStorage.getItem('ligaChatOverlayConfig') || '{}'); }catch(e){}
-    els.channel.value = cfg.channel || DEFAULT_CHANNEL || '';
+    els.channel.value = DEFAULT_CHANNEL; // fest eingestellt, nicht mehr aus gespeicherter Config überschreibbar
     els.clientId.value = cfg.clientId || DEFAULT_CLIENT_ID || '';
     const merged = Array.from(new Set([...DEFAULT_GREETINGS, ...(cfg.greetings || [])]));
     els.greetings.value = merged.join(', ');
@@ -1596,9 +1597,11 @@
       } else if(msg.type === 'modRoster'){
         renderModRoster(msg.roster || []);
       } else if(msg.type === 'versionNotice'){
-        if(localStorage.getItem('ligaChatOverlayDismissedVersion') === msg.latestVersion) return; // schon mal weggeklickt für genau diese Version
-        els.updateNoticeText.textContent = '🔔 Neue Version verfügbar (' + msg.latestVersion + ') – bitte neu laden.';
-        els.updateNoticeBubble.classList.add('open');
+        // Update-Hinweis vorübergehend deaktiviert (Updates kommen aktuell sehr häufig, würde nur nerven) —
+        // einfach die zwei Zeilen unten wieder einkommentieren, sobald Updates seltener werden.
+        // if(localStorage.getItem('ligaChatOverlayDismissedVersion') === msg.latestVersion) return;
+        // els.updateNoticeText.textContent = '🔔 Neue Version verfügbar (' + msg.latestVersion + ') – bitte neu laden.';
+        // els.updateNoticeBubble.classList.add('open');
       } else if(msg.type === 'suspiciousFlag'){
         if(!isMod) return;
         const row = document.querySelector('.chat-row[data-message-id="' + CSS.escape(msg.messageId) + '"]');
