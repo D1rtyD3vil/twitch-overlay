@@ -1221,7 +1221,7 @@
   const GREETING_RESET_COMMAND = '!ligagreetreset'; // unsichtbarer Spezialbefehl für den "Session für ALLE"-Reset
 
   // Bei jeder inhaltlichen Änderung hochzählen -> zeigt dir sofort, ob wirklich die neueste Version geladen ist
-  const OVERLAY_VERSION = 'v1.19.1 · 11.09.2026';
+  const OVERLAY_VERSION = 'v1.20.1 · 11.09.2026';
 
   const els = {
     channel: document.getElementById('channelInput'),
@@ -1622,7 +1622,7 @@
   }
 
   function announceModStatus(){
-    syncSend({ type: 'identify', isMod: isMod, displayName: ownDisplayName || ownLogin || '', isBroadcaster: ownUserId === broadcasterId, clientVersion: OVERLAY_VERSION.split(' · ')[0] });
+    syncSend({ type: 'identify', isMod: isMod, displayName: ownDisplayName || ownLogin || '', isBroadcaster: ownUserId === broadcasterId, clientVersion: OVERLAY_VERSION.split(' · ')[0], channel: (els.channel.value || '').trim().toLowerCase() });
     updateChatModeOptions();
   }
   function updateChatModeOptions(){
@@ -1728,8 +1728,8 @@
   }
 
   // ---------- Streamstart-Erkennung + "Begrüßungen zurücksetzen?"-Popup ----------
-  function pruneGreetingsOlderThan(maxAgeMs){
-    const cutoff = Date.now() - maxAgeMs;
+  function pruneGreetingsOlderThan(maxAgeMs, referenceTs){
+    const cutoff = (referenceTs || Date.now()) - maxAgeMs;
     const toRemove = [];
     greetedUsers.forEach((ts, id)=>{ if(ts < cutoff) toRemove.push(id); });
     toRemove.forEach(id=>{
@@ -1747,8 +1747,10 @@
   }
 
   let streamStartCountdownTimer = null;
+  let streamStartDetectedAt = null;
   let streamStartTimeoutHandle = null;
   function openStreamStartPopup(){
+    streamStartDetectedAt = Date.now(); // fester Bezugspunkt — rutscht nicht mit, egal wie lange das Popup offen bleibt
     els.streamStartBackdrop.classList.add('open');
     let remaining = 60;
     els.streamStartCountdown.textContent = 'Automatischer Reset in ' + remaining + ' Sek., falls du nichts machst...';
@@ -1760,7 +1762,7 @@
     }, 1000);
     streamStartTimeoutHandle = setTimeout(()=>{
       closeStreamStartPopup();
-      pruneGreetingsOlderThan(5 * 60 * 1000);
+      pruneGreetingsOlderThan(5 * 60 * 1000, streamStartDetectedAt);
     }, 60000);
   }
   function closeStreamStartPopup(){
@@ -1768,7 +1770,7 @@
     if(streamStartCountdownTimer){ clearInterval(streamStartCountdownTimer); streamStartCountdownTimer = null; }
     if(streamStartTimeoutHandle){ clearTimeout(streamStartTimeoutHandle); streamStartTimeoutHandle = null; }
   }
-  els.streamStartResetBtn.onclick = ()=>{ closeStreamStartPopup(); pruneGreetingsOlderThan(5 * 60 * 1000); };
+  els.streamStartResetBtn.onclick = ()=>{ closeStreamStartPopup(); pruneGreetingsOlderThan(5 * 60 * 1000, streamStartDetectedAt); };
   els.streamStartCancelBtn.onclick = ()=>{ closeStreamStartPopup(); };
 
   let wasStreamLive = null; // null = noch unbekannt (erste Abfrage zählt nicht als "gerade gestartet")
@@ -3561,11 +3563,8 @@
       persistHistory();
     }
 
-    // Nur der Streamer selbst meldet reguläre Chat-Nachrichten an den Server, damit später
-    // beitretende Mods die letzten 80 Nachrichten sehen — sonst würde jeder Client doppelt melden
-    if(!opts.isReplay && ownUserId && ownUserId === broadcasterId){
-      syncSend({ type: 'historyAdd', item: { t: 'chat', displayName, userId, color, badges, message, emotes, replyTo, messageId, isFirstMsg, wasFirstGreeting: firstGreeting, ts: Date.now() } });
-    }
+    // Reguläre Chat-Nachrichten werden ab jetzt vom Server selbst mitgeschnitten (eigene, dauerhafte
+    // Twitch-Verbindung dort) — läuft dadurch auch, wenn gerade niemand das Tool offen hat.
   }
 
   function persistHistory(){
